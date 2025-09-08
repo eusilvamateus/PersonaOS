@@ -22,7 +22,24 @@ const fmtDateTime = iso => {
   return `${dia}, ${hora}`;
 };
 const ymd = d => new Date(d).toISOString().slice(0, 10);
+const esc = s => (s == null ? '' : String(s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
 
+  // Barra de progresso
+function setProgress(pct, label) {
+  const bar = $('#progressBar');
+  const wrap = $('#progress');
+  if (!wrap) return;
+  wrap.hidden = false;
+  const v = Math.max(0, Math.min(100, pct));
+  if (bar) {
+    bar.style.width = `${v}%`;
+    bar.setAttribute('aria-valuenow', String(Math.round(v)));
+    if (label) bar.setAttribute('aria-valuetext', label);
+  }
+  if (label) $('#progressLabel').textContent = label;
+}
 // Períodos predefinidos (iguais ao que já combinamos)
 function getSelectedPeriod() {
   const sel = $('#periodSelect')?.value || '7d';
@@ -206,12 +223,14 @@ function startStream() {
     await loadPage();
   });
 
+  // No startStream(), melhorar erro do SSE
   es.addEventListener('error', e => {
-    // Se o servidor fechou, o readyState será 2 (closed)
-    if (state.es && state.es.readyState === 2) return;
     console.warn('SSE error', e);
+    // fecha e restaura UI
+    stopStream();
+    $('#progressLabel').textContent = 'Erro no stream';
+    hideProgressSoon();
   });
-}
 
 function cancelStream() {
   if (!state.streaming) return;
@@ -291,10 +310,12 @@ async function loadPage() {
 // Renderiza uma linha a partir do formato do backend
 function renderRow(row) {
   const o = row.order || {};
-  const buyer = (o.buyer && (o.buyer.nickname || o.buyer.first_name)) || '';
+  const buyer = esc((o.buyer && (o.buyer.nickname || o.buyer.first_name)) || '');
   const total = (o.total_amount != null ? o.total_amount : o.paid_amount);
-  const status = (o.order_status || o.status || '').toString();
-  const items = Array.isArray(o.order_items) ? o.order_items.map(it => (it.item?.title || '')).join('<br>') : '';
+  const status = esc((o.order_status || o.status || '').toString());
+  const items = Array.isArray(o.order_items)
+    ? o.order_items.map(it => esc(it.item?.title || '')).join('<br>')
+    : '';
   const date = o.date_closed || o.date_created;
 
   const shippingStatus = (() => {
@@ -304,18 +325,19 @@ function renderRow(row) {
 
   return `
     <tr>
-      <td><strong>${o.id || ''}</strong></td>
+      <td><strong>${esc(o.id || '')}</strong></td>
       <td>${fmtDateTime(date)}</td>
       <td>${buyer}</td>
       <td>${items}</td>
       <td>${fmtCurrency(total)}</td>
       <td>${status}</td>
       <td>${shippingStatus}</td>
-      <td>${row.shipping?.id || ''}</td>
-      <td>${o.pack_id || ''}</td>
+      <td>${esc(row.shipping?.id || '')}</td>
+      <td>${esc(o.pack_id || '')}</td>
     </tr>
   `;
 }
+
 function appendRow(row) {
   const tr = document.createElement('tr');
   tr.innerHTML = renderRow(row);
