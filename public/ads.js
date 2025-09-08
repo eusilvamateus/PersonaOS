@@ -6,85 +6,92 @@
   // ===== Config =====
   const PAGE_SIZE = 50; // FIXO
 
-  // ===== Toast mínimo =====
-  function ensureToastStack() {
-    let n = document.querySelector('.toast-stack');
-    if (!n) {
-      n = document.createElement('div');
-      n.className = 'toast-stack';
-      Object.assign(n.style, {
-        position: 'fixed', top: '16px', right: '16px', zIndex: 1000,
-        display: 'grid', gap: '10px'
-      });
-      document.body.appendChild(n);
+// ===== Toast mínimo =====
+// Usa as classes já definidas no CSS, sem inline style
+function ensureToastStack() {
+  let n = document.querySelector('.toast-stack');
+  if (!n) {
+    n = document.createElement('div');
+    n.className = 'toast-stack';
+    document.body.appendChild(n);
+  }
+  return n;
+}
+function toast(message, type = 'ok', ms = 3500) {
+  const stack = ensureToastStack();
+  const node = document.createElement('div');
+  node.className = 'toast';
+  node.textContent = message;
+  stack.appendChild(node);
+  setTimeout(() => { try { node.remove(); } catch {} }, ms);
+}
+
+// ===== Progresso (helpers) =====
+function progressUpdate(pct = 10, text) {
+  const { bar, label, wrap } = progressEl();
+  const v = Math.max(0, Math.min(100, Number(pct) || 0));
+  if (bar) {
+    bar.style.width = `${v}%`;
+    bar.setAttribute('aria-valuenow', String(Math.round(v)));
+    if (label) {
+      const txt = typeof text === 'string' ? text : label.textContent || '';
+      bar.setAttribute('aria-valuetext', txt);
     }
-    return n;
   }
-  function toast(message, type = 'ok', ms = 3500) {
-    const stack = ensureToastStack();
-    const node = document.createElement('div');
-    node.className = 'toast';
-    Object.assign(node.style, {
-      background: 'var(--panel-bg,#111827)', border: '1px solid rgba(255,255,255,.08)',
-      borderRadius: '14px', padding: '10px 12px'
-    });
-    node.textContent = message;
-    stack.appendChild(node);
-    setTimeout(() => { try { node.remove(); } catch {} }, ms);
-  }
+  if (typeof text === 'string' && label) label.textContent = text;
+}
 
-  // ===== Estado =====
-  const state = {
-    search: { items: [], total: 0, page: 1, pageSize: PAGE_SIZE },
-    es: null,
-    streaming: false,
-    expected: 0
-  };
+// ===== Busca =====
+let currentSearch = { id: 0, controller: null };
 
-  // ===== Progresso (helpers) =====
-  let progressHideTimer = null;
-  const progressEl = () => ({
-    wrap: document.getElementById('progress'),
-    bar: document.getElementById('progressBar'),
-    label: document.getElementById('progressLabel')
+async function doSearch(page = 1) {
+  // cancela requisição anterior
+  if (currentSearch.controller) currentSearch.controller.abort();
+  currentSearch.controller = new AbortController();
+  currentSearch.id++;
+
+  state.search.page = page;
+  const { pageSize } = state.search;
+  const offset = (page - 1) * pageSize;
+
+  const q = $('#adsQ').value.trim();
+  const status = $('#adsStatus').value;
+  const category_id = $('#adsCategory').value.trim();
+  const free_shipping = $('#adsFreeShipping').checked ? 'true' : 'false';
+  const sort = $('#adsSort').value;
+
+  progressStart('Buscando anúncios…', 15);
+
+  const params = new URLSearchParams({
+    limit: String(pageSize),
+    offset: String(offset),
+    include: 'details,sale_price',
+    sort
   });
-  function progressResetUI() {
-    const { bar, label } = progressEl();
-    if (bar) bar.style.width = '0%';
-    if (label) label.textContent = 'Aguardando…';
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  if (category_id) params.set('category_id', category_id);
+  if (free_shipping === 'true') params.set('free_shipping', 'true');
+
+  const reqId = currentSearch.id;
+  try {
+    const r = await fetch(`/api/ads/search?${params.toString()}`, { signal: currentSearch.controller.signal });
+    if (!r.ok) throw new Error('Falha na busca');
+    const data = await r.json();
+    // ignora se outra busca já foi disparada
+    if (reqId !== currentSearch.id) return;
+
+    state.search.items = Array.isArray(data.items) ? data.items : [];
+    state.search.total = Number(data?.paging?.total || state.search.items.length);
+    renderTableFromSearch();
+    progressFinish(`Encontrados ${state.search.total}`);
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    console.error(e);
+    $('#adsTbody').innerHTML = `<tr><td colspan="7" class="muted">Erro ao buscar anúncios.</td></tr>`;
+    progressError('Erro na busca');
   }
-  function progressHideNow() {
-    const { wrap } = progressEl();
-    if (wrap) wrap.hidden = true;
-    progressResetUI();
-    if (progressHideTimer) { clearTimeout(progressHideTimer); progressHideTimer = null; }
-  }
-  function progressStart(text = 'Sincronizando…', pct = 5) {
-    const { wrap } = progressEl();
-    if (!wrap) return;
-    wrap.hidden = false;
-    progressUpdate(pct, text);
-  }
-  function progressUpdate(pct = 10, text) {
-    const { bar, label } = progressEl();
-    if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(pct) || 0))}%`;
-    if (typeof text === 'string' && label) label.textContent = text;
-  }
-  function progressFinish(text = 'Concluído', hideAfterMs = 800) {
-    progressUpdate(100, text);
-    if (progressHideTimer) clearTimeout(progressHideTimer);
-    progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
-  }
-  function progressError(text = 'Erro', hideAfterMs = 1400) {
-    progressUpdate(100, text);
-    if (progressHideTimer) clearTimeout(progressHideTimer);
-    progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
-  }
-  function progressCancel(text = 'Stream cancelado', hideAfterMs = 900) {
-    progressUpdate(100, text);
-    if (progressHideTimer) clearTimeout(progressHideTimer);
-    progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
-  }
+}
 
   // ===== Utils =====
   const fmtBRL = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
