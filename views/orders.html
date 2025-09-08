@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Pedidos — Mercado Livre</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="/layout.css" rel="stylesheet" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="/" style="display: flex; align-items: center; gap: 8px; color: var(--muted);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Voltar
+      </a>
+      <h1 style="margin: 0; font-size: 20px; font-weight: 600;">Pedidos</h1>
+    </div>
+    <div class="actions">
+      <span id="syncedAt" class="muted">Ainda não sincronizado</span>
+      <button id="cancelBtn" class="btn" style="display:none;">Cancelar</button>
+      <button id="syncBtn" class="btn primary">Sincronizar Pedidos</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-header">
+        <div id="chips" style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button data-group="all" class="chip active">Todos <span id="count-all" class="badge">0</span></button>
+          <button data-group="delivered" class="chip">Entregues <span id="count-delivered" class="badge">0</span></button>
+          <button data-group="in_transit" class="chip">A caminho <span id="count-in_transit" class="badge">0</span></button>
+          <button data-group="ready_to_ship" class="chip">Pronto p/ envio <span id="count-ready_to_ship" class="badge">0</span></button>
+        </div>
+
+        <div class="tools" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <label class="muted" for="periodSelect">Período:</label>
+          <select id="periodSelect" class="input" style="width: auto;">
+            <option value="24h">Últimas 24 horas</option>
+            <option value="7d" selected>Últimos 7 dias</option>
+            <option value="1m">Último mês</option>
+            <option value="6m">Últimos 6 meses</option>
+            <option value="1y">Último ano</option>
+            <option value="custom">Data personalizada</option>
+          </select>
+
+          <span id="customDates" style="display:none; gap:8px; align-items:center">
+            <input type="date" id="fromDate" class="input" style="width: auto;" />
+            <span class="muted">a</span>
+            <input type="date" id="toDate" class="input" style="width: auto;" />
+          </span>
+          
+          <label class="muted" for="pageSize" style="margin-left:16px">Itens por página:</label>
+          <select id="pageSize" class="input" style="width: auto;">
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="progress" class="progress-wrap" hidden>
+        <div class="progress">
+          <div class="bar-bg"><div id="progressBar" class="bar"></div></div>
+          <span id="progressLabel">Sincronizando pedidos…</span>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Data</th>
+              <th>Comprador</th>
+              <th>Itens</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Envio</th>
+              <th>Shipping ID</th>
+              <th>Pack ID</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="9" class="muted" style="text-align: center; padding: 48px;">Sem pedidos para exibir.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel-footer">
+        <div class="pager" style="display: flex; gap: 12px; align-items: center;">
+          <button id="prevBtn" class="btn">‹ Anterior</button>
+          <span id="pageInfo" class="muted" style="font-weight: 500;">Página 1 de 1</span>
+          <button id="nextBtn" class="btn">Próxima ›</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/orders.js" type="module"></script>
+</body>
+</html>

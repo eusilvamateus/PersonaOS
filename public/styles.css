@@ -1,0 +1,104 @@
+/* styles.css */
+/* --- Layout Específico do Dashboard --- */
+.main-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+}
+.side {
+  position: sticky;
+  top: 106px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.side h3 {
+  margin: 0;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 600;
+}
+.nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.nav a {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: all .2s;
+}
+.nav a:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.chip-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 8px;
+  background: var(--surface); color: var(--muted);
+  font-size: 13px; border: 1px solid var(--border);
+  margin-top: 1rem;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; }
+.dot.ok { background: var(--accent); }
+.dot.warn { background: #f59e0b; }
+
+.content { display: grid; gap: 32px; align-content: start; }
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.25rem; }
+.col-12 { grid-column: span 12; }
+.col-8 { grid-column: span 8; }
+.col-6 { grid-column: span 6; }
+.col-4 { grid-column: span 4; }
+.col-3 { grid-column: span 3; }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.field-action { display: flex; align-items: flex-end; }
+textarea.input { min-height: 100px; resize: vertical; }
+.json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow: auto;
+  max-height: 350px;
+  white-space: pre;
+  font-size: 0.825rem;
+  margin: 0;
+}
+.actions-group { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions-group.space-between { justify-content: space-between; align-items: center; }
+.check-label { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--muted); }
+
+/* --- Tabela de Anúncios --- */
+#sync_table th:first-child, #sync_table td:first-child { width: 70px; text-align: center; }
+#sync_table img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); vertical-align: middle; }
+
+/* --- Banner de Status de Autenticação --- */
+.auth-status-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 1.5rem; border-bottom: 1px solid var(--border);
+  font-weight: 500; font-size: 0.9rem;
+}
+.auth-status-banner.success {
+  background-color: var(--accent); /* solid fallback for older browsers */
+  background-color: rgba(0, 123, 255, 0.15); /* fallback for accent color with 15% opacity */
+  color: var(--accent);
+}
+
+.auth-status-banner .icon { font-size: 20px; }
+
+/* --- Responsividade --- */
+@media (max-width: 1024px) {
+  .main-layout { grid-template-columns: 1fr; }
+  .side { display: none; }
+  .col-6, .col-4, .col-3 { grid-column: span 12; }
+}

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Colar code/state — Mercado Livre</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="/layout.css" rel="stylesheet" />
+</head>
+<body>
+  <!-- Topbar padrão -->
+  <header class="topbar">
+    <div class="brand">
+      <a href="/" class="brand-link">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Voltar
+      </a>
+      <h1>Autenticação manual</h1>
+    </div>
+  </header>
+
+  <!-- Conteúdo centralizado -->
+  <main class="container" style="min-height: calc(100vh - 72px); display: grid; place-items: center;">
+    <section class="panel" style="width: 100%; max-width: 560px;">
+      <div class="panel-header">
+        <h2 style="margin:0">Cole o link do callback ou preencha os campos</h2>
+        <p class="muted" style="margin:4px 0 0">Extrairemos <code>code</code> e <code>state</code> para trocar pelos tokens.</p>
+      </div>
+
+      <div class="panel-body" style="display: grid; gap: 12px;">
+        <!-- URL completa do callback -->
+        <label class="muted" for="fullUrl">Link completo do callback (opcional)</label>
+        <div style="display:flex; gap: 8px; align-items: center;">
+          <input id="fullUrl" type="url" class="input" placeholder="https://seuapp.com/callback?code=...&state=..." style="flex:1" autocomplete="off" />
+          <button id="pasteBtn" type="button" class="btn">Colar</button>
+          <button id="extractBtn" type="button" class="btn">Extrair</button>
+        </div>
+        <small id="hint" class="muted"></small>
+
+        <!-- Form principal -->
+        <form id="pasteForm" method="post" action="/oauth/paste" style="display: grid; gap: 12px;">
+          <div>
+            <label class="muted" for="code">code</label>
+            <input id="code" name="code" class="input" placeholder="ex.: TG-123abc..." required autocomplete="off" />
+          </div>
+          <div>
+            <label class="muted" for="state">state</label>
+            <input id="state" name="state" class="input" placeholder="gerado pelo /login" required autocomplete="off" />
+          </div>
+
+          <div class="panel-footer" style="display:flex; gap:8px; justify-content: flex-end;">
+            <a href="/login" class="btn">Gerar novo state</a>
+            <button type="submit" class="btn primary">Trocar por tokens</button>
+          </div>
+        </form>
+
+        <p class="muted" style="margin:4px 0 0">
+          Dica: se você copiou o link inteiro do navegador após o login, clique em <strong>Colar</strong> e depois em <strong>Extrair</strong>.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- JS externo (mesma origem) para respeitar CSP 'script-src self' -->
+  <script src="/oauth-paste.js" defer></script>
+</body>
+</html>

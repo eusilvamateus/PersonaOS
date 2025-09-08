@@ -1,0 +1,17 @@
+{
+  "extends": [
+    "development"
+  ],
+  "hints": {
+    "compat-api/css": [
+      "default",
+      {
+        "ignore": [
+          "backdrop-filter",
+          "border-color: color-mix(in oklab, var(--ok) 45%, var(--border))"
+        ]
+      }
+    ],
+    "button-type": "on"
+  }
+}

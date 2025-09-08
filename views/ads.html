@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Anúncios</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="/layout.css" rel="stylesheet" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a class="brand-link" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Voltar
+      </a>
+      <h1>Anúncios</h1>
+    </div>
+    <nav class="actions">
+      <a class="btn" href="/orders">Pedidos</a>
+    </nav>
+  </header>
+
+  <main class="container" style="display:grid; gap:16px;">
+    <section class="panel">
+      <div class="panel-header" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button id="adsStreamBtn"  class="btn primary">Sincronizar via Stream</button>
+        <button id="adsHttpBtn"    class="btn">Sincronizar via HTTP</button>
+        <button id="adsCancelBtn"  class="btn" style="display:none">Cancelar Stream</button>
+        <!-- removido: seletor 'Itens por página' -->
+      </div>
+
+      <div class="panel-body">
+        <!-- Filtros -->
+        <div class="filters" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+          <input id="adsQ" class="input" placeholder="Buscar por título..." style="min-width:240px" />
+          <input id="adsCategory" class="input" placeholder="Categoria (ex.: MLB123)" style="width:180px" />
+          <label class="check-label"><input id="adsFreeShipping" type="checkbox" /> Frete grátis</label>
+          <select id="adsStatus" class="input">
+            <option value="">Status: todos</option>
+            <option value="active">Ativo</option>
+            <option value="paused">Pausado</option>
+            <option value="closed">Fechado</option>
+          </select>
+          <select id="adsSort" class="input" title="Ordenar">
+            <option value="relevance">Ordenar: relevância</option>
+            <option value="last_updated_desc">Atualizado (recente)</option>
+            <option value="price_asc">Preço (menor→maior)</option>
+            <option value="price_desc">Preço (maior→menor)</option>
+            <option value="sold_desc">Mais vendidos</option>
+          </select>
+          <button id="adsSearchBtn" class="btn">Buscar</button>
+        </div>
+
+        <!-- Barra de progresso (mesma estrutura de Pedidos) -->
+        <div id="progress" class="progress" hidden>
+          <div class="bar-bg">
+            <div id="progressBar" class="bar" style="width:0%"></div>
+          </div>
+          <span id="progressLabel">Aguardando…</span>
+        </div>
+
+        <!-- Tabela -->
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="min-width:360px">TÍTULO</th>
+                <th>PREÇO</th>
+                <th>DISP.</th>
+                <th>VEND.</th>
+                <th>STATUS</th>
+                <th>ATUALIZADO</th>
+                <th>LINK</th>
+              </tr>
+            </thead>
+            <tbody id="adsTbody">
+              <tr><td colspan="7" class="muted">Nenhum dado para exibir.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel-footer" style="display:flex; align-items:center; gap:12px;">
+        <span class="muted">Total: <strong id="adsTotal">0</strong></span>
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+          <button id="adsPrevBtn" class="btn">Anterior</button>
+          <span id="adsPageInfo" class="muted">Página 1/1</span>
+          <button id="adsNextBtn" class="btn">Próxima</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Painel Descrição -->
+    <section class="panel" id="descPanel" hidden>
+      <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between;">
+        <h2>Descrição do Anúncio <span id="descItemId" class="muted"></span></h2>
+        <div class="actions" style="display:flex; gap:8px;">
+          <button id="descCloseBtn" class="btn">Fechar</button>
+          <button id="descSaveBtn" class="btn primary">Salvar</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <textarea id="descText" class="input" rows="12" style="width:100%;"></textarea>
+        <div class="muted" style="display:flex; gap:12px; justify-content:space-between; margin-top:6px;">
+          <span id="descMeta"></span>
+          <span id="descCount">0 caracteres</span>
+        </div>
+        <div id="descError" class="muted" style="color:#ff8a8a; margin-top:6px;"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/ads.js" defer></script>
+</body>
+</html>
