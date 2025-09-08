@@ -26,4 +26,3 @@ Thumbs.db
 .idea/
 .vscode/
 node_modules
-.env.example

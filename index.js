@@ -1010,4 +1010,4 @@ app.post('/refresh', async (req, res) => {
 
 app.post('/logout', (req, res) => { req.session.destroy(() => res.redirect('/')); });
 
-app.listen(PORT_USED, () => { console.log(`Servidor ouvindo na porta ${PORT_USED}`); });
+app.listen(PORT_USED, () => { console.log(`Servidor ouvindo em http://localhost:${PORT_USED}`); });

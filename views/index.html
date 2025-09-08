@@ -1,135 +1,169 @@
 <!doctype html>
 <html lang="pt-BR" data-theme="dark">
 <head>
-    <meta charset="utf-8" />
-    <title>Mercado Livre — Integração</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link href="/layout.css" rel="stylesheet" />
-    <link href="/styles.css" rel="stylesheet" />
+  <meta charset="utf-8" />
+  <title>Mercado Livre — Integração</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="/layout.css" rel="stylesheet" />
+  <link href="/styles.css" rel="stylesheet" />
 </head>
 <body>
-    <header class="topbar">
-        <div class="brand">
-            <div class="logo">💬</div>
-            <div>
-                <div>Mercado Livre</div>
-                <div class="muted" style="font-size: 0.8rem; margin-top: -2px;">Mensagens & Anúncios</div>
-            </div>
-        </div>
-        <div class="actions">
-            <a class="btn" href="/ads">📈 Anúncios</a>
-            <a class="btn" href="/orders">🧾 Pedidos</a>
-            <span id="top-actions-unauthed">
-                <button class="btn primary" id="loginBtn">Entrar</button>
-            </span>
-            <span id="top-actions-authed" style="display: none;">
-                <button class="btn" id="refreshBtn">Renovar token</button>
-                <form method="post" action="/logout" style="display:inline"><button class="btn" type="submit">Sair</button></form>
-            </span>
-        </div>
-    </header>
-
-    <div class="container main-layout">
-        <aside class="side">
-            <h3>Navegação</h3>
-            <nav class="nav">
-                <a href="#sec-auth">🔐 Autenticação</a>
-                <a href="#sec-unread">🕒 Pendentes</a>
-                <a href="#sec-pack">💬 Conversas</a>
-                <a href="#sec-send">✉️ Enviar Mensagem</a>
-                <a href="#sec-attach">📎 Anexos</a>
-                <a href="/ads">📈 Anúncios</a>
-                <a href="/orders">🧾 Pedidos</a>
-            </nav>
-            <div id="userChip" class="chip-status"><span class="dot warn"></span> não autenticado</div>
-        </aside>
-
-        <main class="content">
-            <section class="panel" id="sec-auth">
-                <div class="panel-header"><h2>Autenticação & Status</h2></div>
-                <div id="auth-success-message" class="auth-status-banner" style="display: none;"></div>
-                <div class="panel-body grid">
-                    <div class="col-6 field">
-                        <label>Resposta da API (JSON)</label>
-                        <pre class="json" id="statusOut">{ carregando... }</pre>
-                    </div>
-                    <div class="col-6 field">
-                        <label>Ações</label>
-                        <div id="auth-actions-unauthed" class="actions-group">
-                            <button class="btn primary" id="loginBtn2">Iniciar login</button>
-                            <button class="btn" id="pasteBtn2">Colar code/state</button>
-                        </div>
-                        <div id="auth-actions-authed" class="actions-group" style="display: none;">
-                            <button class="btn" id="refreshBtn2">Renovar token</button>
-                            <button class="btn" id="statusBtn">Atualizar status</button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="panel" id="sec-unread">
-                <div class="panel-header"><h2>Consultar Mensagens Pendentes</h2></div>
-                <div class="panel-body grid">
-                    <div class="col-4 field">
-                        <label for="role">Seu papel (Role)</label>
-                        <select id="role" class="input">
-                            <option value="seller">Vendedor (seller)</option>
-                            <option value="buyer">Comprador (buyer)</option>
-                        </select>
-                    </div>
-                    <div class="col-8 field-action">
-                        <button class="btn" id="unreadBtn">Consultar</button>
-                    </div>
-                    <div class="col-12 field">
-                        <label>Resposta da API</label>
-                        <pre class="json" id="unreadOut"></pre>
-                    </div>
-                </div>
-            </section>
-
-            <section class="panel" id="sec-pack">
-              <div class="panel-header"><h2>Listar Mensagens de uma Conversa</h2></div>
-              <div class="panel-body grid">
-                <div class="col-6 field"><label for="packId">Pack ID</label><input id="packId" class="input" placeholder="Ex: 200000..." /></div>
-                <div class="col-3 field"><label for="limit">Limite</label><input id="limit" type="number" class="input" value="10" /></div>
-                <div class="col-3 field"><label for="offset">Offset</label><input id="offset" type="number" class="input" value="0" /></div>
-                <div class="col-12 actions-group space-between">
-                    <label class="check-label"><input id="markRead" type="checkbox" checked /> Marcar como lidas</label>
-                    <button class="btn" id="packBtn">Listar mensagens</button>
-                </div>
-                <div class="col-12 field"><label>Resposta da API</label><pre class="json" id="packOut"></pre></div>
-              </div>
-            </section>
-
-            <section class="panel" id="sec-send">
-                <div class="panel-header"><h2>Enviar Mensagem Pós-venda</h2></div>
-                <div class="panel-body grid">
-                    <div class="col-6 field"><label for="send_packId">Pack ID</label><input id="send_packId" class="input" /></div>
-                    <div class="col-6 field"><label for="to_user_id">ID do Destinatário</label><input id="to_user_id" class="input" /></div>
-                    <div class="col-12 field"><label for="msg_text">Texto (até 350 caracteres)</label><textarea id="msg_text" class="input" maxlength="350"></textarea></div>
-                    <div class="col-12 field"><label for="attach_ids">IDs dos Anexos (separados por vírgula)</label><input id="attach_ids" class="input" /></div>
-                </div>
-                <div class="panel-footer">
-                    <button class="btn primary" id="sendBtn">Enviar Mensagem</button>
-                </div>
-                <div class="panel-body no-padding-top"><pre class="json" id="sendOut"></pre></div>
-            </section>
-
-             <section class="panel" id="sec-attach">
-                <div class="panel-header"><h2>Upload de Anexos</h2></div>
-                <div class="panel-body grid">
-                    <div class="col-8 field"><label for="file">Arquivo (JPG/PNG/PDF/TXT, até 25 MB)</label><input type="file" id="file" class="input" /></div>
-                    <div class="col-4 field-action"><button class="btn" id="uploadBtn">Fazer Upload</button></div>
-                    <div class="col-12 field"><label>Resposta do Upload</label><pre class="json" id="attachOut"></pre></div>
-                </div>
-            </section>
-
-            <!-- Bloco de sincronização de anúncios foi removido da Home (agora está em /ads) -->
-        </main>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">💬</div>
+      <div>
+        <div>Mercado Livre</div>
+        <div class="muted">Mensagens &amp; Anúncios</div>
+      </div>
     </div>
+    <div class="actions">
+      <a class="btn" href="/ads">📈 Anúncios</a>
+      <a class="btn" href="/orders">🧾 Pedidos</a>
+      <span id="top-actions-unauthed">
+        <button class="btn primary" id="loginBtn">Entrar</button>
+      </span>
+      <span id="top-actions-authed" hidden>
+        <button class="btn" id="refreshBtn">Renovar token</button>
+        <form method="post" action="/logout"><button class="btn" type="submit">Sair</button></form>
+      </span>
+    </div>
+  </header>
 
-    <div id="toast"></div>
-    <script src="/app.js" defer></script>
-    <script src="/home.js" defer></script>
+  <div class="container main-layout">
+    <aside class="side">
+      <h3>Navegação</h3>
+      <nav class="nav">
+        <a href="#sec-auth">🔐 Autenticação</a>
+        <a href="#sec-unread">🕒 Pendentes</a>
+        <a href="#sec-pack">💬 Conversas</a>
+        <a href="#sec-send">✉️ Enviar Mensagem</a>
+        <a href="#sec-attach">📎 Anexos</a>
+        <a href="/ads">📈 Anúncios</a>
+        <a href="/orders">🧾 Pedidos</a>
+      </nav>
+      <div id="userChip" class="chip-status"><span class="dot warn"></span> não autenticado</div>
+    </aside>
+
+    <main class="content">
+      <section class="panel" id="sec-auth">
+        <div class="panel-header"><h2>Autenticação &amp; Status</h2></div>
+        <div id="auth-success-message" class="auth-status-banner" hidden></div>
+        <div class="panel-body grid">
+          <div class="col-6 field">
+            <label>Resposta da API (JSON)</label>
+            <pre class="json" id="statusOut">{ carregando... }</pre>
+          </div>
+          <div class="col-6 field">
+            <label>Ações</label>
+            <div id="auth-actions-unauthed" class="actions-group">
+              <button class="btn primary" id="loginBtn2">Iniciar login</button>
+              <button class="btn" id="pasteBtn2">Colar code/state</button>
+            </div>
+            <div id="auth-actions-authed" class="actions-group" hidden>
+              <button class="btn" id="refreshBtn2">Renovar token</button>
+              <button class="btn" id="statusBtn">Atualizar status</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="sec-unread">
+        <div class="panel-header"><h2>Consultar Mensagens Pendentes</h2></div>
+        <div class="panel-body grid">
+          <div class="col-4 field">
+            <label for="role">Seu papel (Role)</label>
+            <select id="role" class="input">
+              <option value="seller">Vendedor (seller)</option>
+              <option value="buyer">Comprador (buyer)</option>
+            </select>
+          </div>
+          <div class="col-8 field-action">
+            <button class="btn" id="unreadBtn">Consultar</button>
+          </div>
+          <div class="col-12 field">
+            <label>Resposta da API</label>
+            <pre class="json" id="unreadOut"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="sec-pack">
+        <div class="panel-header"><h2>Listar Mensagens de uma Conversa</h2></div>
+        <div class="panel-body grid">
+          <div class="col-6 field">
+            <label for="packId">Pack ID</label>
+            <input id="packId" class="input" placeholder="Ex: 200000..." />
+          </div>
+          <div class="col-3 field">
+            <label for="limit">Limite</label>
+            <input id="limit" type="number" class="input" value="10" />
+          </div>
+          <div class="col-3 field">
+            <label for="offset">Offset</label>
+            <input id="offset" type="number" class="input" value="0" />
+          </div>
+          <div class="col-12 actions-group space-between">
+            <label class="check-label"><input id="markRead" type="checkbox" checked /> Marcar como lidas</label>
+            <button class="btn" id="packBtn">Listar mensagens</button>
+          </div>
+          <div class="col-12 field">
+            <label>Resposta da API</label>
+            <pre class="json" id="packOut"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="sec-send">
+        <div class="panel-header"><h2>Enviar Mensagem Pós-venda</h2></div>
+        <div class="panel-body grid">
+          <div class="col-6 field">
+            <label for="send_packId">Pack ID</label>
+            <input id="send_packId" class="input" />
+          </div>
+          <div class="col-6 field">
+            <label for="to_user_id">ID do Destinatário</label>
+            <input id="to_user_id" class="input" />
+          </div>
+          <div class="col-12 field">
+            <label for="msg_text">Texto (até 350 caracteres)</label>
+            <textarea id="msg_text" class="input" maxlength="350"></textarea>
+          </div>
+          <div class="col-12 field">
+            <label for="attach_ids">IDs dos Anexos (separados por vírgula)</label>
+            <input id="attach_ids" class="input" />
+          </div>
+        </div>
+        <div class="panel-footer">
+          <button class="btn primary" id="sendBtn">Enviar Mensagem</button>
+        </div>
+        <div class="panel-body no-padding-top">
+          <pre class="json" id="sendOut"></pre>
+        </div>
+      </section>
+
+      <section class="panel" id="sec-attach">
+        <div class="panel-header"><h2>Upload de Anexos</h2></div>
+        <div class="panel-body grid">
+          <div class="col-8 field">
+            <label for="file">Arquivo (JPG/PNG/PDF/TXT, até 25 MB)</label>
+            <input type="file" id="file" class="input" />
+          </div>
+          <div class="col-4 field-action">
+            <button class="btn" id="uploadBtn">Fazer Upload</button>
+          </div>
+          <div class="col-12 field">
+            <label>Resposta do Upload</label>
+            <pre class="json" id="attachOut"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bloco de sincronização de anúncios foi removido da Home (agora está em /ads) -->
+    </main>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/app.js" defer></script>
+  <script src="/home.js" defer></script>
 </body>
 </html>
