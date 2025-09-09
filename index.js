@@ -944,4 +944,143 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
 
     ordersCache.items = [];
     ordersCache.syncedAt = Date.now();
-    const stats = { delivered: 0, in_transit: 0, ready_to_s_
+    const stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
+
+    let sent = 0;
+    let expectedTotal = 0;
+    const seen = new Set();
+
+    // meta inicial
+    send('meta', { range: { from: from.toISOString(), to: to.toISOString(), windowDays }, expectedTotal, total: expectedTotal, basis });
+
+    async function streamEnriched(chunk) {
+      const maxConcurrent = 6;
+      const queue = [...chunk];
+      let running = 0;
+
+      return await new Promise((resolve) => {
+        const runNext = () => {
+          if (closed) return resolve();
+          if (queue.length === 0 && running === 0) return resolve();
+
+          while (!closed && running < maxConcurrent && queue.length) {
+            const order = queue.shift();
+            running++;
+            (async () => {
+              try {
+                const key = String(order?.id || order?.id_str || JSON.stringify(order));
+                if (seen.has(key)) return;
+                seen.add(key);
+
+                let shipping = null;
+                let group = 'other';
+                try {
+                  const shippingId = order?.shipping?.id || order?.shipping;
+                  if (shippingId) {
+                    const { data } = await ml.get(`/shipments/${shippingId}`);
+                    shipping = data || null;
+                    group = mapShippingToGroup(data?.status);
+                  } else {
+                    group = mapShippingToGroup(order?.shipping_status || '');
+                  }
+                } catch {}
+
+                const when_group = mapWhenGroup(order, shipping);
+                const shipping_form = mapShippingForm(shipping);
+                const turbo = isTurbo(shipping);
+
+                const enriched = { order, shipping, shipping_group: group, when_group, shipping_form, turbo };
+                ordersCache.items.push(enriched);
+                if (stats[group] != null) stats[group]++; else stats.other++;
+
+                sent++;
+                send('row', enriched);
+                const progressPayload = expectedTotal > 0
+                  ? { sent, expectedTotal, total: expectedTotal, stats }
+                  : { sent, expectedTotal: 0, total: 0, stats };
+                if (expectedTotal > 0 || sent % 25 === 0) send('progress', progressPayload);
+              } finally { running--; }
+            })().then(runNext).catch(() => { running--; runNext(); });
+          }
+        };
+        runNext();
+      });
+    }
+
+    for (const win of dateWindows(from, to, windowDays)) {
+      if (closed) break;
+
+      let offset = 0;
+      let firstPage = true;
+
+      while (!closed) {
+        const url = new URL('/orders/search', BASE_API_URL);
+        url.searchParams.set('seller', String(sellerId));
+        url.searchParams.set('sort', 'date_desc');
+        url.searchParams.set('limit', String(limit));
+        url.searchParams.set('offset', String(offset));
+        url.searchParams.set(fromKey, win.fromISO);
+        url.searchParams.set(toKey,   win.toISO);
+
+        let data;
+        try {
+          const resp = await ml.get(url.pathname + url.search);
+          data = resp.data;
+        } catch (e) {
+          send('error', { scope: 'page', window: win, message: String(e?.message || e) });
+          break;
+        }
+
+        const results = Array.isArray(data?.results) ? data.results : [];
+        if (firstPage) {
+          const totalWin = Number(data?.paging?.total || 0);
+          expectedTotal += totalWin;
+          send('meta', { window: win, windowTotal: totalWin, expectedTotal, total: expectedTotal });
+          firstPage = false;
+        }
+
+        if (results.length === 0) break;
+
+        await streamEnriched(results);
+
+        if (results.length < limit) break;
+        offset += limit;
+        if (offset >= 10000) break; // guarda de segurança
+      }
+    }
+
+    ordersCache.syncedAt = Date.now();
+    send('done', { sent, expectedTotal, total: expectedTotal, stats, syncedAt: ordersCache.syncedAt, basis });
+  } catch (err) {
+    send('error', { scope: 'fatal', message: String(err?.message || err) });
+  }
+});
+
+// -------------------- Exemplos --------------------
+app.get('/api/me', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get('/users/me');
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).send(`Erro em /api/me: ${fmtErr(err)}`);
+  }
+});
+
+app.post('/refresh', async (req, res) => {
+  try {
+    const rt = req.session.refresh_token;
+    if (!rt) return res.status(400).send('Sem refresh_token na sessão');
+    const token = await refreshAccessToken(rt);
+    req.session.access_token = token.access_token;
+  	req.session.refresh_token = token.refresh_token;
+    req.session.expires_at = Date.now() + token.expires_in * 1000 - 60 * 1000;
+    return res.json({ ok: true, expires_in: token.expires_in });
+  } catch (err) {
+    return res.status(500).send(`Erro no refresh: ${fmtErr(err)}`);
+  }
+});
+
+app.post('/logout', (req, res) => { req.session.destroy(() => res.redirect('/')); });
+
+app.listen(PORT_USED, () => { console.log(`Servidor ouvindo em http://localhost:${PORT_USED}`); });
