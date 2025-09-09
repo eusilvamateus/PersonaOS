@@ -1,43 +1,309 @@
-// public/orders.js
-const $ = s => document.querySelector(s);
-const $$ = s => Array.from(document.querySelectorAll(s));
+// public/orders.js (completo)
 
-// estado
+// ===== Utils DOM e formatação =====
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const esc = (s) =>
+  s == null
+    ? ""
+    : String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+function fmtCurrency(n) {
+  if (n == null || Number.isNaN(Number(n))) return "";
+  return Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function fmtDateTime(s) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return esc(String(s));
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+function normalizeYMD(d) {
+  if (!d) return null;
+  const dt = new Date(d);
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+}
+
+// ===== Estado da página =====
 let state = {
   page: 1,
   pageSize: 50,
-  group: 'today',
-  form: 'all',
+  group: "today", // today | upcoming | in_transit | delivered | ready_to_ship | all
+  form: "all", // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
   es: null,
   streaming: false,
-  lastRange: null
+  lastRange: "7d",
 };
 
-// initUI: listeners dos chips de grupo e forma
-function initUI() {
-  $('#pageSize').value = String(state.pageSize);
-  $('#pageSize').addEventListener('change', () => {
-    state.pageSize = Number($('#pageSize').value || 50);
-    state.page = 1;
-    if (!state.streaming) loadPage();
+// ===== Progresso =====
+function showProgress() {
+  const wrap = $("#progress");
+  if (wrap) wrap.hidden = false;
+}
+function hideProgressSoon() {
+  setTimeout(() => {
+    const wrap = $("#progress");
+    if (wrap) wrap.hidden = true;
+  }, 400);
+}
+function setProgress(pct, label) {
+  const wrap = $("#progress");
+  const bar = $("#progressBar");
+  const lbl = $("#progressLabel");
+  if (!wrap || !bar || !lbl) return;
+  wrap.hidden = false;
+  const v = Math.max(0, Math.min(100, Number(pct) || 0));
+  bar.style.width = `${v}%`;
+  bar.setAttribute("aria-valuenow", String(Math.round(v)));
+  if (typeof label === "string") {
+    bar.setAttribute("aria-valuetext", label);
+    lbl.textContent = label;
+  }
+}
+
+// ===== Sincronização via SSE =====
+function cancelStream() {
+  if (state.es) {
+    try {
+      state.es.close();
+    } catch {}
+    state.es = null;
+  }
+  state.streaming = false;
+  $("#syncBtn")?.removeAttribute("disabled");
+  const cancel = $("#cancelBtn");
+  if (cancel) cancel.style.display = "none";
+  hideProgressSoon();
+}
+
+async function startStream() {
+  if (state.streaming) return;
+  state.streaming = true;
+  $("#syncBtn")?.setAttribute("disabled", "true");
+  const cancel = $("#cancelBtn");
+  if (cancel) cancel.style.display = "inline-block";
+  showProgress();
+  setProgress(1, "Conectando…");
+
+  const es = new EventSource("/api/orders/stream");
+  state.es = es;
+
+  let total = 0;
+  let sent = 0;
+
+  es.addEventListener("meta", (ev) => {
+    try {
+      const d = JSON.parse(ev.data || "{}");
+      total = Number(d.total || d.total_ids || 0) || 0;
+      setProgress(1, `Preparando… 0/${total}`);
+    } catch {}
   });
 
-  // chips do topo (grupos)
-  $$('#chips .chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      $$('#chips .chip').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+  es.addEventListener("batch", (ev) => {
+    try {
+      const d = JSON.parse(ev.data || "{}");
+      const c = Number(d.count || 0) || 0;
+      sent += c;
+      const pct = total ? Math.round((sent / total) * 100) : 0;
+      setProgress(pct, `Sincronizando… ${Math.min(sent, total)}/${total}`);
+    } catch {}
+  });
+
+  es.addEventListener("progress", (ev) => {
+    try {
+      const d = JSON.parse(ev.data || "{}");
+      const pct = Number(d.pct || 0);
+      const s = Number(d.sent || sent);
+      const t = Number(d.total || total);
+      setProgress(pct || (t ? Math.round((s / t) * 100) : 0), `Sincronizando… ${s}/${t}`);
+    } catch {}
+  });
+
+  es.addEventListener("done", async (ev) => {
+    setProgress(100, "Concluído");
+    cancelStream();
+    await refreshStats();
+    await loadPage();
+  });
+
+  es.addEventListener("error", () => {
+    cancelStream();
+    setProgress(0, "Erro no stream");
+    hideProgressSoon();
+  });
+}
+
+// ===== Stats e listagem =====
+async function refreshStats() {
+  try {
+    const r = await fetch("/api/orders/stats");
+    const s = await r.json();
+
+    // chips topo
+    $("#count-today").textContent = s?.chips?.today ?? 0;
+    $("#count-upcoming").textContent = s?.chips?.upcoming ?? 0;
+    $("#count-in_transit").textContent = s?.chips?.in_transit ?? s?.stats?.in_transit ?? 0;
+    $("#count-delivered").textContent = s?.chips?.delivered ?? s?.stats?.delivered ?? 0;
+
+    // formas
+    $("#count-flex").textContent = s?.forms?.flex ?? 0;
+    $("#count-full").textContent = s?.forms?.full ?? 0;
+    $("#count-drop_off").textContent = s?.forms?.drop_off ?? 0;
+    $("#count-xd_drop_off").textContent = s?.forms?.xd_drop_off ?? 0;
+    $("#count-cross_docking").textContent = s?.forms?.cross_docking ?? 0;
+    $("#count-turbo").textContent = s?.forms?.turbo ?? 0;
+
+    if (s?.syncedAt) updateSyncedAt(state.lastRange, s.syncedAt);
+  } catch {
+    // silencioso
+  }
+}
+
+async function loadPage() {
+  const params = new URLSearchParams({
+    page: String(state.page),
+    pageSize: String(state.pageSize),
+    group: state.group,
+    form: state.form,
+  });
+  const r = await fetch("/api/orders/page?" + params.toString());
+  const p = await r.json();
+
+  $("#pageInfo").textContent = `Página ${p.page} de ${p.pages}`;
+  $("#prevBtn").disabled = p.page <= 1;
+  $("#nextBtn").disabled = p.page >= p.pages;
+
+  const tbody = $("#tbody");
+  tbody.innerHTML = "";
+  (p.data || []).forEach(appendRow);
+  if (!p.data || !p.data.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:48px;">Sem pedidos para exibir.</td></tr>`;
+  }
+}
+
+// ===== Renderização de linhas =====
+function getShippingStatusRaw(row) {
+  return (
+    row?.shipping?.status ||
+    row?.order?.shipping_status ||
+    row?.shipping_group ||
+    ""
+  );
+}
+
+function shippingStatusLabel(s) {
+  const v = String(s || "").toLowerCase();
+  switch (v) {
+    case "ready_to_ship": return "Pronto p/ envio";
+    case "to_be_agreed": return "A combinar";
+    case "pending": return "Pendente";
+    case "handling": return "Manuseando";
+    case "shipped": return "Enviado";
+    case "in_transit": return "Em trânsito";
+    case "out_for_delivery": return "Saiu p/ entrega";
+    case "soon_deliver": return "Entrega em breve";
+    case "delivered": return "Entregue";
+    case "not_delivered": return "Não entregue";
+    default: return v || "—";
+  }
+}
+function shippingStatusClass(s) {
+  const v = String(s || "").toLowerCase();
+  if (v === "delivered") return "ok";
+  if (v === "ready_to_ship") return "warn";
+  if (v === "in_transit" || v === "shipped" || v === "out_for_delivery") return "ship";
+  return "muted";
+}
+function badgeShipping(raw) {
+  const label = shippingStatusLabel(raw);
+  const cls = shippingStatusClass(raw);
+  return `<span class="badge-status shipping ${cls}">${esc(label)}</span>`;
+}
+
+function appendRow(row) {
+  const o = row?.order || {};
+  const buyer =
+    (o?.buyer && (o.buyer.nickname || o.buyer.first_name)) || "";
+  const total = o.total_amount != null ? o.total_amount : o.paid_amount;
+  const date = o.date_closed || o.date_created;
+  const items = Array.isArray(o.order_items)
+    ? o.order_items.map((it) => esc(it?.item?.title || "")).join("<br>")
+    : "";
+
+  const shipRaw = getShippingStatusRaw(row);
+  const shipBadge = badgeShipping(shipRaw);
+  const shippingId = row?.shipping?.id || "";
+  const packId = o?.pack_id || "";
+
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><strong>${esc(o.id || "")}</strong></td>
+    <td>${fmtDateTime(date)}</td>
+    <td>${esc(buyer)}</td>
+    <td>${items}</td>
+    <td>${fmtCurrency(total)}</td>
+    <td>${esc(shippingStatusLabel(shipRaw))}</td>
+    <td>${shipBadge}${row?.turbo ? ' <span class="badge-status ok">Turbo</span>' : ''}</td>
+    <td>${esc(shippingId)}</td>
+    <td>${esc(packId)}</td>
+  `;
+  $("#tbody").appendChild(tr);
+}
+
+// ===== UI e listeners =====
+function updateSyncedAt(range, syncedAtISO) {
+  const el = $("#syncedAt");
+  if (!el) return;
+  const d = new Date(syncedAtISO);
+  if (Number.isNaN(d.getTime())) {
+    el.textContent = "Sincronização concluída";
+    return;
+  }
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  el.textContent = `Sincronizado em ${dd}/${mo} ${hh}:${mm}`;
+}
+
+function initUI() {
+  // page size
+  const pageSizeSel = $("#pageSize");
+  if (pageSizeSel) {
+    pageSizeSel.value = String(state.pageSize);
+    pageSizeSel.addEventListener("change", () => {
+      state.pageSize = Number(pageSizeSel.value || 50);
+      state.page = 1;
+      if (!state.streaming) loadPage();
+    });
+  }
+
+  // chips topo
+  $$("#chips .chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      $$("#chips .chip").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
       state.group = btn.dataset.group;
       state.page = 1;
       if (!state.streaming) loadPage();
     });
   });
 
-  // chips de forma (novo)
-  $$('#forms .chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      $$('#forms .chip').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+  // chips formas
+  $$("#forms .chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      $$("#forms .chip").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
       state.form = btn.dataset.form;
       state.page = 1;
       if (!state.streaming) loadPage();
@@ -45,313 +311,41 @@ function initUI() {
   });
 
   // paginação
-  $('#prevBtn').addEventListener('click', () => { if (state.page > 1) { state.page--; loadPage(); } });
-  $('#nextBtn').addEventListener('click', () => { state.page++; loadPage(); });
-
-  // período custom
-  const sel = $('#periodSelect');
-  if (sel) {
-    sel.addEventListener('change', () => {
-      const custom = sel.value === 'custom';
-      $('#customDates').style.display = custom ? 'inline-flex' : 'none';
-    });
-  }
-
-  $('#syncBtn').addEventListener('click', startStream);
-  $('#cancelBtn')?.addEventListener('click', cancelStream);
-
-  refreshStats();
-  loadPage();
-}
-
-/* ======================= APRESENTAÇÃO DO STATUS DE ENVIO =======================
-   Traduz e colore o chip de envio com base em um mapa centralizado.
-   Você pode sobrescrever via window.SHIPPING_STATUS_UI antes de carregar este script. */
-const DEFAULT_SHIPPING_STATUS_UI = {
-  delivered:     { label: 'Entregue',        variant: 'ok'   },
-  ready_to_ship: { label: 'Pronto p/ envio', variant: 'info' },
-  pending:       { label: 'Aguardando',      variant: 'warn' },
-  in_transit:    { label: 'A caminho',       variant: 'info' },
-  shipped:       { label: 'Enviado',         variant: 'info' },
-  handling:      { label: 'Preparando',      variant: 'info' },
-  not_delivered: { label: 'Não entregue',    variant: 'warn' },
-  cancelled:     { label: 'Cancelado',       variant: 'muted' }
-};
-// window overrides default (se quiser customizar fora do arquivo)
-const SHIPPING_STATUS_UI = { ...DEFAULT_SHIPPING_STATUS_UI, ...(window?.SHIPPING_STATUS_UI || {}) };
-
-function titleCaseFromSlug(slug) {
-  return String(slug || '')
-    .replace(/_/g, ' ')
-    .replace(/\b(\w)/g, (m, ch) => ch.toUpperCase());
-}
-function presentShippingStatus(raw) {
-  const key = String(raw || '').toLowerCase();
-  const conf = SHIPPING_STATUS_UI[key];
-  return {
-    label: conf?.label ?? titleCaseFromSlug(key),
-    variant: conf?.variant ?? 'muted'
-  };
-}
-function badgeShipping(status) {
-  const { label, variant } = presentShippingStatus(status);
-  // Requer as classes base no layout.css: .badge-status, .ok/.info/.warn/.muted e a variante .shipping
-  return `<span class="badge-status shipping ${variant}">${label}</span>`;
-}
-function getShippingStatusRaw(row) {
-  // Preferimos o status do shipment; fallback para um possível status no pedido
-  return row?.shipping?.status ?? row?.order?.shipping_status ?? '';
-}
-
-// UI inicial
-function initUI() {
-  // page size
-  $('#pageSize').value = String(state.pageSize);
-  $('#pageSize').addEventListener('change', () => {
-    state.pageSize = Number($('#pageSize').value || 50);
-    state.page = 1;
-    if (!state.streaming) loadPage();
-  });
-
-  // chips grupo
-  $$('#chips .chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      $$('#chips .chip').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.group = btn.dataset.group;
-      state.page = 1;
-      if (!state.streaming) loadPage();
-    });
-  });
-
-  // navegação
-  $('#prevBtn').addEventListener('click', () => { if (state.page > 1) { state.page--; loadPage(); } });
-  $('#nextBtn').addEventListener('click', () => { state.page++; loadPage(); });
-
-  // período custom
-  const sel = $('#periodSelect');
-  if (sel) {
-    sel.addEventListener('change', () => {
-      const custom = sel.value === 'custom';
-      $('#customDates').style.display = custom ? 'inline-flex' : 'none';
-    });
-  }
-
-  // ações
-  $('#syncBtn').addEventListener('click', startStream);
-  $('#cancelBtn')?.addEventListener('click', cancelStream);
-
-  // carrega estado atual
-  refreshStats();
-  loadPage();
-}
-
-// Barra de progresso
-function setProgress(pct, label) {
-  const bar = $('#progressBar');
-  const wrap = $('#progress');
-  if (!wrap) return;
-  wrap.hidden = false;
-  if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-  if (label) $('#progressLabel').textContent = label;
-}
-function hideProgressSoon() {
-  const wrap = $('#progress');
-  if (!wrap) return;
-  setTimeout(() => { wrap.hidden = true; const bar = $('#progressBar'); if (bar) bar.style.width = '0%'; }, 600);
-}
-
-// Stream SSE
-function startStream() {
-  if (state.streaming) return;
-  const range = getSelectedPeriod();
-  if (!range) {
-    alert('Selecione as datas em "Data personalizada".');
-    return;
-  }
-
-  state.streaming = true;
-  $('#syncBtn').disabled = true;
-  $('#cancelBtn').style.display = 'inline-block';
-  $('#prevBtn').disabled = true;
-  $('#nextBtn').disabled = true;
-
-  // limpa tabela e contagens visuais
-  $('#tbody').innerHTML = `<tr><td colspan="9" class="muted">Sincronizando pedidos…</td></tr>`;
-  setCounts(0, { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 });
-
-  const url = `/api/orders/stream?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
-  const es = new EventSource(url);
-  state.es = es;
-
-  let expected = 0;
-  let received = 0;
-  let firstRow = true;
-
-  es.addEventListener('meta', e => {
-    const meta = JSON.parse(e.data || '{}');
-    expected = Number(meta.expectedTotal || expected || 0);
-    setProgress(expected > 0 ? (received / expected) * 100 : 10, 'Preparando…');
-  });
-
-  es.addEventListener('row', e => {
-    const row = JSON.parse(e.data);
-    if (firstRow) {
-      $('#tbody').innerHTML = '';
-      firstRow = false;
+  $("#prevBtn")?.addEventListener("click", () => {
+    if (state.page > 1) {
+      state.page--;
+      loadPage();
     }
-    appendRow(row);
-    received++;
-    if (expected > 0) setProgress((received / expected) * 100, `Recebidos ${received}/${expected}`);
-    else if (received < 50) setProgress(15 + received, `Recebidos ${received}…`);
-    else setProgress(65, `Recebidos ${received}…`); // estimativa quando não há total
+  });
+  $("#nextBtn")?.addEventListener("click", () => {
+    state.page++;
+    loadPage();
   });
 
-  es.addEventListener('progress', e => {
-    const p = JSON.parse(e.data || '{}');
-    if (p.stats) setCounts(p.sent ?? received, p.stats);
-  });
-
-  es.addEventListener('done', async e => {
-    const d = JSON.parse(e.data || '{}');
-    state.lastRange = { from: range.from, to: range.to };
-    updateSyncedAt(state.lastRange, d.syncedAt);
-    setCounts(d.sent ?? received, d.stats || {});
-    setProgress(100, 'Concluído');
-    hideProgressSoon();
-    stopStream();
-    // carrega paginação normal para manter UX padrão
-    await refreshStats();
-    state.page = 1;
-    await loadPage();
-  });
-
-  es.addEventListener('error', e => {
-    // Se o servidor fechou, o readyState será 2 (closed)
-    if (state.es && state.es.readyState === 2) return;
-    console.warn('SSE error', e);
-  });
-}
-
-function cancelStream() {
-  if (!state.streaming) return;
-  stopStream();
-  $('#progressLabel').textContent = 'Sincronização cancelada';
-  hideProgressSoon();
-}
-
-function stopStream() {
-  try { state.es?.close(); } catch {}
-  state.es = null;
-  state.streaming = false;
-  $('#syncBtn').disabled = false;
-  $('#cancelBtn').style.display = 'none';
-  $('#prevBtn').disabled = false;
-  $('#nextBtn').disabled = false;
-}
-
-// Atualiza contagens nos chips
-function setCounts(total, s) {
-  if (typeof total === 'number') $('#count-all').textContent = total;
-  if (s && typeof s === 'object') {
-    if (s.delivered != null) $('#count-delivered').textContent = s.delivered;
-    if (s.in_transit != null) $('#count-in_transit').textContent = s.in_transit;
-    if (s.ready_to_ship != null) $('#count-ready_to_ship').textContent = s.ready_to_ship;
+  // período
+  const periodSelect = $("#periodSelect");
+  if (periodSelect) {
+    periodSelect.value = state.lastRange || "7d";
+    periodSelect.addEventListener("change", () => {
+      state.lastRange = periodSelect.value;
+      const custom = periodSelect.value === "custom";
+      const cd = $("#customDates");
+      if (cd) cd.style.display = custom ? "inline-flex" : "none";
+    });
   }
+
+  // sync
+  $("#syncBtn")?.addEventListener("click", startStream);
+  $("#cancelBtn")?.addEventListener("click", cancelStream);
+
+  // carga inicial
+  refreshStats();
+  loadPage();
 }
 
-// Resumo de sincronização
-function updateSyncedAt(range, syncedAtMs) {
-  const when = syncedAtMs ? new Date(syncedAtMs) : new Date();
-  let txt = `Atualizado em ${when.toLocaleDateString('pt-BR')}, ${when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-  if (range && range.from && range.to) txt += ` • Período: ${range.from} a ${range.to}`;
-  $('#syncedAt').textContent = txt;
-}
-
-// Carrega estatísticas atuais do backend
-async function refreshStats() {
-  try {
-    const r = await fetch('/api/orders/stats');
-    const s = await r.json();
-    // chips topo (novo)
-    $('#count-today').textContent = s.chips?.today ?? 0;
-    $('#count-upcoming').textContent = s.chips?.upcoming ?? 0;
-    $('#count-in_transit').textContent = s.chips?.in_transit ?? (s.stats?.in_transit ?? 0);
-    $('#count-delivered').textContent = s.chips?.delivered ?? (s.stats?.delivered ?? 0);
-    // formas
-    $('#count-flex').textContent = s.forms?.flex ?? 0;
-    $('#count-full').textContent = s.forms?.full ?? 0;
-    $('#count-drop_off').textContent = s.forms?.drop_off ?? 0;
-    $('#count-xd_drop_off').textContent = s.forms?.xd_drop_off ?? 0;
-    $('#count-cross_docking').textContent = s.forms?.cross_docking ?? 0;
-    $('#count-turbo').textContent = s.forms?.turbo ?? 0;
-
-    if (s.syncedAt) updateSyncedAt(state.lastRange, s.syncedAt);
-  } catch {}
-}
-
-// Tabela paginada normal (pós stream ou quando navegar)
-async function loadPage() {
-  const params = new URLSearchParams({
-    page: String(state.page),
-    pageSize: String(state.pageSize),
-    group: state.group,
-    form: state.form
-  });
-  const r = await fetch('/api/orders/page?' + params.toString());
-  const p = await r.json();
-
-  $('#pageInfo').textContent = `Página ${p.page} de ${p.pages}`;
-  $('#prevBtn').disabled = p.page <= 1;
-  $('#nextBtn').disabled = p.page >= p.pages;
-
-  const tbody = $('#tbody');
-  tbody.innerHTML = '';
-  (p.data || []).forEach(appendRow);
-  if (!p.data?.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:48px;">Sem pedidos para exibir.</td></tr>`;
-  }
-}
-
-// Renderiza uma linha a partir do formato do backend
-function renderRow(row) {
-  const o = row.order || {};
-  const buyer = (o.buyer && (o.buyer.nickname || o.buyer.first_name)) || '';
-  const total = (o.total_amount != null ? o.total_amount : o.paid_amount);
-  const status = (o.order_status || o.status || '').toString();
-  const items = Array.isArray(o.order_items) ? o.order_items.map(it => (it.item?.title || '')).join('<br>') : '';
-  const date = o.date_closed || o.date_created;
-
-  const shippingStatus = (() => {
-    const raw = getShippingStatusRaw(row);
-    return raw ? badgeShipping(raw) : '';
-  })();
-
-  return `
-    <tr>
-      <td><strong>${o.id || ''}</strong></td>
-      <td>${fmtDateTime(date)}</td>
-      <td>${buyer}</td>
-      <td>${items}</td>
-      <td>${fmtCurrency(total)}</td>
-      <td>${status}</td>
-      <td>${shippingStatus}</td>
-      <td>${row.shipping?.id || ''}</td>
-      <td>${o.pack_id || ''}</td>
-    </tr>
-  `;
-}
-function appendRow(row) {
-  const tr = document.createElement('tr');
-  tr.innerHTML = renderRow(row);
-  // O renderRow devolve <tr>...</tr>, então puxamos o conteúdo interno
-  $('#tbody').insertAdjacentHTML('beforeend', tr.innerHTML);
-}
-
-document.addEventListener('DOMContentLoaded', initUI);
-// Chame a inicialização da página de pedidos
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initUI);
+// auto init
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initUI);
 } else {
   initUI();
 }
