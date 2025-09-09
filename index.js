@@ -614,12 +614,21 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
 
     ordersCache.items = [];
     ordersCache.syncedAt = Date.now();
+<<<<<<< HEAD
+=======
+    const stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
 
     let sent = 0;
     let expectedTotal = 0;
     const seen = new Set();
 
+<<<<<<< HEAD
     send('meta', { range: { from: from.toISOString(), to: to.toISOString() }, basis, expectedTotal });
+=======
+    // meta inicial
+    send('meta', { range: { from: from.toISOString(), to: to.toISOString(), windowDays }, expectedTotal, total: expectedTotal, basis });
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
 
     async function streamEnriched(chunk) {
       const maxConcurrent = 6;
@@ -641,6 +650,7 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
                 seen.add(key);
 
                 let shipping = null;
+<<<<<<< HEAD
                 let groupClassic = 'other';
                 try {
                   const shippingId = order?.shipping?.id || order?.shipping;
@@ -650,6 +660,17 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
                     groupClassic = mapShippingToGroup(data?.status);
                   } else {
                     groupClassic = mapShippingToGroup(order?.shipping_status || '');
+=======
+                let group = 'other';
+                try {
+                  const shippingId = order?.shipping?.id || order?.shipping;
+                  if (shippingId) {
+                    const { data } = await ml.get(`/shipments/${shippingId}`);
+                    shipping = data || null;
+                    group = mapShippingToGroup(data?.status);
+                  } else {
+                    group = mapShippingToGroup(order?.shipping_status || '');
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
                   }
                 } catch {}
 
@@ -657,12 +678,25 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
                 const shipping_form = mapShippingForm(shipping);
                 const turbo = isTurbo(shipping);
 
+<<<<<<< HEAD
                 const enriched = { order, shipping, shipping_group: groupClassic, when_group, shipping_form, turbo };
                 ordersCache.items.push(enriched);
 
                 sent++;
                 send('row', enriched);
                 if (expectedTotal > 0 || sent % 25 === 0) send('progress', { sent, expectedTotal });
+=======
+                const enriched = { order, shipping, shipping_group: group, when_group, shipping_form, turbo };
+                ordersCache.items.push(enriched);
+                if (stats[group] != null) stats[group]++; else stats.other++;
+
+                sent++;
+                send('row', enriched);
+                const progressPayload = expectedTotal > 0
+                  ? { sent, expectedTotal, total: expectedTotal, stats }
+                  : { sent, expectedTotal: 0, total: 0, stats };
+                if (expectedTotal > 0 || sent % 25 === 0) send('progress', progressPayload);
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
               } finally { running--; }
             })().then(runNext).catch(() => { running--; runNext(); });
           }
@@ -671,7 +705,11 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
       });
     }
 
+<<<<<<< HEAD
     for (const win of dateWindows(from, to, 30)) {
+=======
+    for (const win of dateWindows(from, to, windowDays)) {
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
       if (closed) break;
 
       let offset = 0;
@@ -683,8 +721,13 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
         url.searchParams.set('sort', 'date_desc');
         url.searchParams.set('limit', String(limit));
         url.searchParams.set('offset', String(offset));
+<<<<<<< HEAD
         url.searchParams.set(fromKey, toISOAtBoundary(win.fromISO || win.from, false));
         url.searchParams.set(toKey,   toISOAtBoundary(win.toISO || win.to, true));
+=======
+        url.searchParams.set(fromKey, win.fromISO);
+        url.searchParams.set(toKey,   win.toISO);
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
 
         let data;
         try {
@@ -699,7 +742,11 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
         if (firstPage) {
           const totalWin = Number(data?.paging?.total || 0);
           expectedTotal += totalWin;
+<<<<<<< HEAD
           send('meta', { window: win, windowTotal: totalWin, expectedTotal });
+=======
+          send('meta', { window: win, windowTotal: totalWin, expectedTotal, total: expectedTotal });
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
           firstPage = false;
         }
 
@@ -709,12 +756,20 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
 
         if (results.length < limit) break;
         offset += limit;
+<<<<<<< HEAD
         if (offset >= 10000) break; // guarda
+=======
+        if (offset >= 10000) break; // guarda de segurança
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
       }
     }
 
     ordersCache.syncedAt = Date.now();
+<<<<<<< HEAD
     send('done', { sent, expectedTotal, syncedAt: ordersCache.syncedAt, basis, group });
+=======
+    send('done', { sent, expectedTotal, total: expectedTotal, stats, syncedAt: ordersCache.syncedAt, basis });
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
   } catch (err) {
     send('error', { scope: 'fatal', message: String(err?.message || err) });
   }
@@ -737,7 +792,11 @@ app.post('/refresh', async (req, res) => {
     if (!rt) return res.status(400).send('Sem refresh_token na sessão');
     const token = await refreshAccessToken(rt);
     req.session.access_token = token.access_token;
+<<<<<<< HEAD
     req.session.refresh_token = token.refresh_token;
+=======
+  	req.session.refresh_token = token.refresh_token;
+>>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
     req.session.expires_at = Date.now() + token.expires_in * 1000 - 60 * 1000;
     return res.json({ ok: true, expires_in: token.expires_in });
   } catch (err) {
