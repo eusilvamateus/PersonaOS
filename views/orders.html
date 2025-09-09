@@ -10,7 +10,7 @@
   <header class="topbar">
     <div class="brand">
       <a href="/" style="display: flex; align-items: center; gap: 8px; color: var(--muted);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         Voltar
       </a>
       <h1 style="margin: 0; font-size: 20px; font-weight: 600;">Pedidos</h1>
@@ -25,13 +25,26 @@
   <main class="container">
     <section class="panel">
       <div class="panel-header">
+        <!-- Chips de agrupamento (topo) -->
         <div id="chips" style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button data-group="all" class="chip active">Todos <span id="count-all" class="badge">0</span></button>
-          <button data-group="delivered" class="chip">Entregues <span id="count-delivered" class="badge">0</span></button>
-          <button data-group="in_transit" class="chip">A caminho <span id="count-in_transit" class="badge">0</span></button>
-          <button data-group="ready_to_ship" class="chip">Pronto p/ envio <span id="count-ready_to_ship" class="badge">0</span></button>
+          <button data-group="today" class="chip active">Envios de hoje <span id="count-today" class="badge">0</span></button>
+          <button data-group="upcoming" class="chip">Próximos dias <span id="count-upcoming" class="badge">0</span></button>
+          <button data-group="in_transit" class="chip">Em trânsito <span id="count-in_transit" class="badge">0</span></button>
+          <button data-group="delivered" class="chip">Finalizadas <span id="count-delivered" class="badge">0</span></button>
         </div>
 
+        <!-- Chips por forma de envio -->
+        <div id="forms" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button data-form="all" class="chip active">Todas as formas</button>
+          <button data-form="flex" class="chip">Flex <span id="count-flex" class="badge">0</span></button>
+          <button data-form="full" class="chip">Full <span id="count-full" class="badge">0</span></button>
+          <button data-form="drop_off" class="chip">Drop-off <span id="count-drop_off" class="badge">0</span></button>
+          <button data-form="xd_drop_off" class="chip">Coletas/Places <span id="count-xd_drop_off" class="badge">0</span></button>
+          <button data-form="cross_docking" class="chip">Cross-docking <span id="count-cross_docking" class="badge">0</span></button>
+          <button data-form="turbo" class="chip">Turbo <span id="count-turbo" class="badge">0</span></button>
+        </div>
+
+        <!-- Ferramentas (período e paginação por página) -->
         <div class="tools" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
           <label class="muted" for="periodSelect">Período:</label>
           <select id="periodSelect" class="input" style="width: auto;">

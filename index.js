@@ -690,6 +690,45 @@ function mapShippingToGroup(status = '') {
   if (s === 'in_transit' || s === 'shipped' || s === 'handling') return 'in_transit';
   return 'other';
 }
+function normalizeYMD(d) {
+  if (!d) return null;
+  const dt = new Date(d);
+  return dt.toISOString().slice(0, 10);
+}
+
+function mapShippingForm(shipping = {}) {
+  const t =
+    String(shipping?.logistic_type || shipping?.logistic?.type || '')
+      .toLowerCase();
+  if (t.includes('fulfillment')) return 'full';
+  if (t.includes('self_service') || t.includes('flex')) return 'flex';
+  if (t.includes('xd_drop_off')) return 'xd_drop_off';
+  if (t.includes('drop_off')) return 'drop_off';
+  if (t.includes('cross_docking')) return 'cross_docking';
+  return 'other';
+}
+function isTurbo(shipping = {}) {
+  const tags = Array.isArray(shipping?.tags) ? shipping.tags.map(String) : [];
+  const svc = String(shipping?.service || '').toLowerCase();
+  return tags.map(s => s.toLowerCase()).includes('turbo') || svc.includes('turbo');
+}
+
+/** Agrupa para os chips do topo */
+function mapWhenGroup(order, shipping) {
+  const s = String(shipping?.status || order?.shipping_status || '').toLowerCase();
+  if (s === 'delivered') return 'delivered';
+  if (['in_transit', 'shipped', 'handling', 'out_for_delivery', 'soon_deliver'].includes(s)) {
+    return 'in_transit';
+  }
+  // “Hoje/Próximos dias”: usa lead_time.buffering.date (fallback em estimated_handling_limit.date)
+  const buf = shipping?.lead_time?.buffering?.date || shipping?.estimated_handling_limit?.date;
+  const y = normalizeYMD(buf);
+  const today = new Date().toISOString().slice(0, 10);
+  if (y === today) return 'today';
+  if (y && y > today) return 'upcoming';
+  return 'other';
+}
+
 async function hydrateShipments(orders, ml) {
   const maxConcurrent = 8;
   const queue = [...orders];
@@ -710,9 +749,14 @@ async function hydrateShipments(orders, ml) {
               const { data } = await ml.get(`/shipments/${shippingId}`);
               shipping = data || null;
               group = mapShippingToGroup(data?.status);
+            } else {
+              group = mapShippingToGroup(order?.shipping_status || '');
             }
           } catch {}
-          out.push({ order, shipping, shipping_group: group });
+          const when_group = mapWhenGroup(order, shipping);
+          const shipping_form = mapShippingForm(shipping);
+          const turbo = isTurbo(shipping);
+          out.push({ order, shipping, shipping_group: group, when_group, shipping_form, turbo });
         })()
           .then(() => { running--; runNext(); })
           .catch(err => { running--; reject(err); });
@@ -722,12 +766,24 @@ async function hydrateShipments(orders, ml) {
   });
 }
 function computeStats(items) {
-  const stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
+  const byStatus = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
+  const chips =     { today: 0, upcoming: 0, in_transit: 0, delivered: 0, other: 0 };
+  const forms =     { full: 0, flex: 0, drop_off: 0, xd_drop_off: 0, cross_docking: 0, other: 0, turbo: 0 };
+
   for (const it of items) {
-    if (stats[it.shipping_group] != null) stats[it.shipping_group]++;
-    else stats.other++;
+    // status clássico (compatibilidade)
+    if (byStatus[it.shipping_group] != null) byStatus[it.shipping_group]++; else byStatus.other++;
+
+    // chips topo (hoje/próximos/em trânsito/finalizadas)
+    const w = it.when_group ?? mapWhenGroup(it.order, it.shipping);
+    if (chips[w] != null) chips[w]++; else chips.other++;
+
+    // formas de envio
+    const f = it.shipping_form ?? mapShippingForm(it.shipping);
+    if (forms[f] != null) forms[f]++; else forms.other++;
+    if (it.turbo || isTurbo(it.shipping)) forms.turbo++;
   }
-  return stats;
+  return { byStatus, chips, forms };
 }
 
 // Helpers de DATA (padrão último 90d; janelas de 30d)
@@ -818,18 +874,37 @@ app.post('/api/orders/sync', ensureAccessToken, async (req, res) => {
 
 // Estatísticas
 app.get('/api/orders/stats', ensureAccessToken, (req, res) => {
-  const stats = computeStats(ordersCache.items);
-  res.json({ total: ordersCache.items.length, stats, syncedAt: ordersCache.syncedAt });
+  const s = computeStats(ordersCache.items);
+  res.json({
+    total: ordersCache.items.length,
+    stats: s.byStatus,   // compatibilidade (in_transit/ready_to_ship/delivered)
+    chips: s.chips,      // novo (today/upcoming/in_transit/delivered)
+    forms: s.forms,      // novo (full/flex/drop_off/xd_drop_off/cross_docking/turbo)
+    syncedAt: ordersCache.syncedAt
+  });
 });
 
 // Paginação
 app.get('/api/orders/page', ensureAccessToken, (req, res) => {
   const page = Number(req.query.page || 1);
   const pageSize = Math.min(Number(req.query.pageSize || 20), 100);
-  const group = String(req.query.group || 'all');
+  const group = String(req.query.group || 'all'); // all | today | upcoming | in_transit | delivered | ready_to_ship
+  const form  = String(req.query.form  || 'all'); // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
 
   let arr = ordersCache.items;
-  if (group !== 'all') arr = arr.filter(o => o.shipping_group === group);
+
+  // filtro por chip do topo
+  if (group === 'today' || group === 'upcoming') {
+    arr = arr.filter(o => (o.when_group ?? mapWhenGroup(o.order, o.shipping)) === group);
+  } else if (group !== 'all') {
+    arr = arr.filter(o => o.shipping_group === group);
+  }
+
+  // filtro por forma de envio
+  if (form !== 'all') {
+    if (form === 'turbo') arr = arr.filter(o => o.turbo || isTurbo(o.shipping));
+    else arr = arr.filter(o => (o.shipping_form ?? mapShippingForm(o.shipping)) === form);
+  }
 
   arr = [...arr].sort((a, b) => {
     const ad = a.order.date_closed || a.order.date_created || '';
@@ -840,13 +915,7 @@ app.get('/api/orders/page', ensureAccessToken, (req, res) => {
   const start = (page - 1) * pageSize;
   const slice = arr.slice(start, start + pageSize);
 
-  res.json({
-    page,
-    pageSize,
-    total: arr.length,
-    pages: Math.max(1, Math.ceil(arr.length / pageSize)),
-    data: slice
-  });
+  res.json({ page, pageSize, total: arr.length, pages: Math.max(1, Math.ceil(arr.length / pageSize)), data: slice });
 });
 
 // PEDIDOS: STREAM SSE

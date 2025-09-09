@@ -2,46 +2,66 @@
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 
+// estado
 let state = {
   page: 1,
   pageSize: 50,
-  group: 'all',
-  es: null,            // EventSource do stream
+  group: 'today',
+  form: 'all',
+  es: null,
   streaming: false,
   lastRange: null
 };
 
-// Utils
-const fmtCurrency = v => (typeof v === 'number' ? v : Number(v || 0))
-  .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtDateTime = iso => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const dia = d.toLocaleDateString('pt-BR');
-  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  return `${dia}, ${hora}`;
-};
-const ymd = d => new Date(d).toISOString().slice(0, 10);
+// initUI: listeners dos chips de grupo e forma
+function initUI() {
+  $('#pageSize').value = String(state.pageSize);
+  $('#pageSize').addEventListener('change', () => {
+    state.pageSize = Number($('#pageSize').value || 50);
+    state.page = 1;
+    if (!state.streaming) loadPage();
+  });
 
-// Períodos predefinidos (iguais ao que já combinamos)
-function getSelectedPeriod() {
-  const sel = $('#periodSelect')?.value || '7d';
-  const now = new Date();
-  let from = new Date(now), to = new Date(now);
+  // chips do topo (grupos)
+  $$('#chips .chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#chips .chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.group = btn.dataset.group;
+      state.page = 1;
+      if (!state.streaming) loadPage();
+    });
+  });
 
-  if (sel === '24h') from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  else if (sel === '7d') from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  else if (sel === '1m') from.setMonth(from.getMonth() - 1);
-  else if (sel === '6m') from.setMonth(from.getMonth() - 6);
-  else if (sel === '1y') from.setFullYear(from.getFullYear() - 1);
-  else if (sel === 'custom') {
-    const f = $('#fromDate').value;
-    const t = $('#toDate').value;
-    if (!f || !t) return null;
-    from = new Date(f);
-    to = new Date(t);
+  // chips de forma (novo)
+  $$('#forms .chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#forms .chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.form = btn.dataset.form;
+      state.page = 1;
+      if (!state.streaming) loadPage();
+    });
+  });
+
+  // paginação
+  $('#prevBtn').addEventListener('click', () => { if (state.page > 1) { state.page--; loadPage(); } });
+  $('#nextBtn').addEventListener('click', () => { state.page++; loadPage(); });
+
+  // período custom
+  const sel = $('#periodSelect');
+  if (sel) {
+    sel.addEventListener('change', () => {
+      const custom = sel.value === 'custom';
+      $('#customDates').style.display = custom ? 'inline-flex' : 'none';
+    });
   }
-  return { from: ymd(from), to: ymd(to) };
+
+  $('#syncBtn').addEventListener('click', startStream);
+  $('#cancelBtn')?.addEventListener('click', cancelStream);
+
+  refreshStats();
+  loadPage();
 }
 
 /* ======================= APRESENTAÇÃO DO STATUS DE ENVIO =======================
@@ -253,10 +273,19 @@ async function refreshStats() {
   try {
     const r = await fetch('/api/orders/stats');
     const s = await r.json();
-    $('#count-all').textContent = s.total ?? 0;
-    $('#count-delivered').textContent = s.stats?.delivered ?? 0;
-    $('#count-in_transit').textContent = s.stats?.in_transit ?? 0;
-    $('#count-ready_to_ship').textContent = s.stats?.ready_to_ship ?? 0;
+    // chips topo (novo)
+    $('#count-today').textContent = s.chips?.today ?? 0;
+    $('#count-upcoming').textContent = s.chips?.upcoming ?? 0;
+    $('#count-in_transit').textContent = s.chips?.in_transit ?? (s.stats?.in_transit ?? 0);
+    $('#count-delivered').textContent = s.chips?.delivered ?? (s.stats?.delivered ?? 0);
+    // formas
+    $('#count-flex').textContent = s.forms?.flex ?? 0;
+    $('#count-full').textContent = s.forms?.full ?? 0;
+    $('#count-drop_off').textContent = s.forms?.drop_off ?? 0;
+    $('#count-xd_drop_off').textContent = s.forms?.xd_drop_off ?? 0;
+    $('#count-cross_docking').textContent = s.forms?.cross_docking ?? 0;
+    $('#count-turbo').textContent = s.forms?.turbo ?? 0;
+
     if (s.syncedAt) updateSyncedAt(state.lastRange, s.syncedAt);
   } catch {}
 }
@@ -266,26 +295,22 @@ async function loadPage() {
   const params = new URLSearchParams({
     page: String(state.page),
     pageSize: String(state.pageSize),
-    group: state.group
+    group: state.group,
+    form: state.form
   });
-  const r = await fetch(`/api/orders/page?${params.toString()}`);
-  if (!r.ok) {
-    $('#tbody').innerHTML = `<tr><td colspan="9" class="muted">Falha ao carregar pedidos.</td></tr>`;
-    return;
+  const r = await fetch('/api/orders/page?' + params.toString());
+  const p = await r.json();
+
+  $('#pageInfo').textContent = `Página ${p.page} de ${p.pages}`;
+  $('#prevBtn').disabled = p.page <= 1;
+  $('#nextBtn').disabled = p.page >= p.pages;
+
+  const tbody = $('#tbody');
+  tbody.innerHTML = '';
+  (p.data || []).forEach(appendRow);
+  if (!p.data?.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:48px;">Sem pedidos para exibir.</td></tr>`;
   }
-  const data = await r.json();
-
-  $('#pageInfo').textContent = `Página ${data.page} de ${data.pages}`;
-  $('#prevBtn').disabled = data.page <= 1;
-  $('#nextBtn').disabled = data.page >= data.pages;
-
-  if (!data.data || data.data.length === 0) {
-    $('#tbody').innerHTML = `<tr><td colspan="9" class="muted">Sem pedidos para exibir.</td></tr>`;
-    return;
-  }
-
-  const rows = data.data.map(renderRow).join('');
-  $('#tbody').innerHTML = rows;
 }
 
 // Renderiza uma linha a partir do formato do backend
