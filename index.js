@@ -919,6 +919,92 @@ app.get('/api/orders/page', ensureAccessToken, (req, res) => {
 });
 
 // PEDIDOS: STREAM SSE
+// GET /api/orders/stream — stream seguro por intervalo de datas
+app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const sellerId = await getSellerId(req);
+
+    const { from, to } = parseDateRangeFromQuery(req.query);   // usa helpers existentes
+    const windowDays = Number(req.query.windowDays || 30);
+    const basis = String(req.query.basis || 'created');
+    const [fromKey, toKey] = dateFilterKeys(basis);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    const ping = setInterval(() => { try { res.write(':\n\n'); } catch {} }, 25000);
+
+    let closed = false;
+    req.on('close', () => { closed = true; clearInterval(ping); });
+
+    const limit = 50;
+    let sent = 0;
+    let stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
+
+    async function enrichAndEmit(orders) {
+      const enriched = await hydrateShipments(orders, ml);
+      for (const row of enriched) {
+        if (closed) return;
+        res.write(`event: row\ndata: ${JSON.stringify(row)}\n\n`);
+        sent++;
+        stats[row.shipping_group] = (stats[row.shipping_group] || 0) + 1;
+        res.write(`event: progress\ndata: ${JSON.stringify({ sent, stats })}\n\n`);
+      }
+    }
+
+    // meta inicial com o intervalo
+    res.write(`event: meta\ndata: ${JSON.stringify({
+      expectedTotal: 0,
+      range: { from: from.toISOString(), to: to.toISOString() },
+      basis
+    })}\n\n`);
+
+    for (const win of dateWindows(from, to, windowDays)) {
+      let offset = 0;
+      let announced = false;
+
+      while (!closed) {
+        const url = new URL('/orders/search', BASE_API_URL);
+        url.searchParams.set('seller', String(sellerId));
+        url.searchParams.set('sort', 'date_desc');
+        url.searchParams.set('limit', String(limit));
+        url.searchParams.set('offset', String(offset));
+        url.searchParams.set(fromKey, win.fromISO);
+        url.searchParams.set(toKey,   win.toISO);
+
+        const { data } = await ml.get(url.pathname + url.search);
+        const results = Array.isArray(data?.results) ? data.results : [];
+
+        if (!announced) {
+          const total = Number(data?.paging?.total || 0);
+          res.write(`event: meta\ndata: ${JSON.stringify({ expectedTotal: total })}\n\n`);
+          announced = true;
+        }
+
+        if (!results.length) break;
+
+        await enrichAndEmit(results);
+
+        if (results.length < limit) break;
+        offset += limit;
+        if (offset >= 10000) break; // guarda de segurança
+      }
+    }
+
+    if (!closed) {
+      res.write(`event: done\ndata: ${JSON.stringify({ sent, stats, syncedAt: Date.now() })}\n\n`);
+    }
+  } catch (err) {
+    try {
+      const detail = (() => { try { return JSON.parse(fmtErr(err)); } catch { return { message: String(err?.message || 'error') }; }})();
+      res.write(`event: error\ndata: ${JSON.stringify({ message: 'stream_failed', detail })}\n\n`);
+    } finally {
+      res.end();
+    }
+  }
+});
+
 app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
