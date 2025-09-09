@@ -349,3 +349,9 @@ function appendRow(row) {
 }
 
 document.addEventListener('DOMContentLoaded', initUI);
+// Chame a inicialização da página de pedidos
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initUI);
+} else {
+  initUI();
+}
