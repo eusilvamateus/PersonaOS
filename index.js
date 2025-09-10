@@ -678,12 +678,12 @@ app.post('/api/shipping/calc', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
     const { zip_from, zip_to, weight, dimensions } = req.body || {};
-    const params = {};
-    if (zip_from) params.zip_from = zip_from;
-    if (zip_to) params.zip_to = zip_to;
-    if (weight) params.weight = weight;
-    if (dimensions) params.dimensions = dimensions;
-    const { data } = await ml.get('/shipments/costs', { params });
+    const payload = {};
+    if (zip_from) payload.zip_from = zip_from;
+    if (zip_to) payload.zip_to = zip_to;
+    if (weight) payload.weight = weight;
+    if (dimensions) payload.dimensions = dimensions;
+    const { data } = await ml.post('/shipments/costs', payload);
     res.json({ ok: true, result: data });
   } catch (err) {
     res
