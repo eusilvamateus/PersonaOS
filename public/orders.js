@@ -23,7 +23,7 @@ const fmtDateTime = iso => {
 };
 const ymd = d => new Date(d).toISOString().slice(0, 10);
 
-// Períodos predefinidos (iguais ao que já combinamos)
+// Períodos predefinidos: 24h, 7d, 1m, 6m, 1y ou intervalo personalizado
 function getSelectedPeriod() {
   const sel = $('#periodSelect')?.value || '7d';
   const now = new Date();
@@ -317,10 +317,7 @@ function renderRow(row) {
   `;
 }
 function appendRow(row) {
-  const tr = document.createElement('tr');
-  tr.innerHTML = renderRow(row);
-  // O renderRow devolve <tr>...</tr>, então puxamos o conteúdo interno
-  $('#tbody').insertAdjacentHTML('beforeend', tr.innerHTML);
+  $('#tbody').insertAdjacentHTML('beforeend', renderRow(row));
 }
 
 document.addEventListener('DOMContentLoaded', initUI);

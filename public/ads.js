@@ -232,7 +232,7 @@
         const pos = Math.max(0, Math.min(position, ta.value.length - 1));
         ta.focus();
         try { ta.setSelectionRange(pos, Math.min(pos + 1, ta.value.length)); } catch {}
-        $('#descError').textContent = `Erro de validação próximo da posição ${position}. Revise o caractere/trecho destacado.`;
+        $('#descError').textContent = `Erro de validação próximo da posição ${position}. Revise o caracter/trecho destacado.`;
       } else {
         $('#descError').textContent = 'Erro ao salvar descrição. Verifique o conteúdo.';
       }
