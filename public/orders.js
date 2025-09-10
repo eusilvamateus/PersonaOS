@@ -157,7 +157,7 @@ function startStream() {
   $('#nextBtn').disabled = true;
 
   // limpa tabela e contagens visuais
-  $('#tbody').innerHTML = `<tr><td colspan="9" class="muted">Sincronizando pedidos…</td></tr>`;
+  $('#tbody').innerHTML = `<tr><td colspan="11" class="muted">Sincronizando pedidos…</td></tr>`;
   setCounts(0, { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 });
 
   const url = `/api/orders/stream?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
@@ -270,7 +270,7 @@ async function loadPage() {
   });
   const r = await fetch(`/api/orders/page?${params.toString()}`);
   if (!r.ok) {
-    $('#tbody').innerHTML = `<tr><td colspan="9" class="muted">Falha ao carregar pedidos.</td></tr>`;
+    $('#tbody').innerHTML = `<tr><td colspan="11" class="muted">Falha ao carregar pedidos.</td></tr>`;
     return;
   }
   const data = await r.json();
@@ -280,7 +280,7 @@ async function loadPage() {
   $('#nextBtn').disabled = data.page >= data.pages;
 
   if (!data.data || data.data.length === 0) {
-    $('#tbody').innerHTML = `<tr><td colspan="9" class="muted">Sem pedidos para exibir.</td></tr>`;
+    $('#tbody').innerHTML = `<tr><td colspan="11" class="muted">Sem pedidos para exibir.</td></tr>`;
     return;
   }
 
@@ -302,6 +302,18 @@ function renderRow(row) {
     return raw ? badgeShipping(raw) : '';
   })();
 
+  const estimatedDelivery = (() => {
+    const d = row.shipping?.estimated_delivery_final || row.shipping?.estimated_delivery_limit?.date;
+    return d ? fmtDateTime(d) : '';
+  })();
+
+  const trackingInfo = (() => {
+    const num = row.shipping?.tracking_number || row.shipping?.tracking_id;
+    const url = row.shipping?.tracking_url;
+    if (!num) return '';
+    return url ? `<a href="${url}" target="_blank">${num}</a>` : num;
+  })();
+
   return `
     <tr>
       <td><strong>${o.id || ''}</strong></td>
@@ -311,7 +323,9 @@ function renderRow(row) {
       <td>${fmtCurrency(total)}</td>
       <td>${status}</td>
       <td>${shippingStatus}</td>
-      <td>${row.shipping?.id || ''}</td>
+      <td>${estimatedDelivery}</td>
+      <td>${trackingInfo}</td>
+      <td>${row.shipping?.id ? `<a href="/api/shipments/${row.shipping.id}/label" target="_blank">${row.shipping.id}</a>` : ''}</td>
       <td>${o.pack_id || ''}</td>
     </tr>
   `;

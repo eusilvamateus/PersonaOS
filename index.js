@@ -100,6 +100,9 @@ app.get('/oauth/paste', (req, res) => {
 app.get('/ads', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'ads.html'));
 });
+app.get('/shipping', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'shipping.html'));
+});
 
 // -------------------- Diag + Flash --------------------
 app.get('/diag', (req, res) => {
@@ -666,6 +669,40 @@ app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
         position
       }
     });
+  }
+});
+
+
+// -------------------- LOGÍSTICA --------------------
+app.post('/api/shipping/calc', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { zip_from, zip_to, weight, dimensions } = req.body || {};
+    const params = {};
+    if (zip_from) params.zip_from = zip_from;
+    if (zip_to) params.zip_to = zip_to;
+    if (weight) params.weight = weight;
+    if (dimensions) params.dimensions = dimensions;
+    const { data } = await ml.get('/shipments/costs', { params });
+    res.json({ ok: true, result: data });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ ok: false, error: { code: 'shipping_calc_failed', message: fmtErr(err) } });
+  }
+});
+
+app.get('/api/shipments/:id/label', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(
+      `/shipments/${encodeURIComponent(req.params.id)}/labels`,
+      { responseType: 'arraybuffer' }
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(data);
+  } catch (err) {
+    res.status(500).end(`Erro ao obter etiqueta: ${fmtErr(err)}`);
   }
 });
 

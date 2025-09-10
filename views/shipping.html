@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Logística</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="/layout.css" rel="stylesheet" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a class="brand-link" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Voltar
+      </a>
+      <h1>Logística</h1>
+    </div>
+    <nav class="actions">
+      <a class="btn" href="/orders">Pedidos</a>
+      <a class="btn" href="/ads">Anúncios</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <div class="panel-header"><h2>Calcular Frete</h2></div>
+      <div class="panel-body grid">
+        <div class="col-3 field">
+          <label for="zipFrom">CEP Origem</label>
+          <input id="zipFrom" class="input" placeholder="Ex: 05010000" />
+        </div>
+        <div class="col-3 field">
+          <label for="zipTo">CEP Destino</label>
+          <input id="zipTo" class="input" placeholder="Ex: 17050000" />
+        </div>
+        <div class="col-3 field">
+          <label for="weight">Peso (g)</label>
+          <input id="weight" class="input" placeholder="Ex: 500" />
+        </div>
+        <div class="col-3 field">
+          <label for="dimensions">Dimensões LxAxP,cm</label>
+          <input id="dimensions" class="input" placeholder="Ex: 10x20x30" />
+        </div>
+        <div class="col-12 field-action">
+          <button id="calcBtn" class="btn primary">Calcular</button>
+        </div>
+        <div class="col-12 field">
+          <pre id="calcOut" class="json"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/shipping.js" type="module"></script>
+</body>
+</html>
