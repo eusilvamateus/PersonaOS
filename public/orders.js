@@ -1,4 +1,4 @@
-// public/orders.js (completo)
+// public/orders.js — versão com auto-sync ao abrir/refresh e SSE por grupo
 
 // ===== Utils DOM e formatação =====
 const $ = (s) => document.querySelector(s);
@@ -28,57 +28,54 @@ function fmtDateTime(s) {
     minute: "2-digit",
   });
 }
-function normalizeYMD(d) {
-  if (!d) return null;
-  const dt = new Date(d);
-  return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
-}
 
 // ===== Estado da página =====
 let state = {
   page: 1,
   pageSize: 50,
   group: "today", // today | upcoming | in_transit | delivered | ready_to_ship | all
-  form: "all", // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
+  form: "all",    // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
   es: null,
   streaming: false,
   lastRange: "7d",
 };
 
 // ===== Progresso =====
-function showProgress() {
-  const wrap = $("#progress");
-  if (wrap) wrap.hidden = false;
-}
-function hideProgressSoon() {
-  setTimeout(() => {
-    const wrap = $("#progress");
-    if (wrap) wrap.hidden = true;
-  }, 400);
-}
+function showProgress() { $("#progress")?.removeAttribute("hidden"); }
+function hideProgressSoon() { setTimeout(() => $("#progress")?.setAttribute("hidden", "true"), 400); }
 function setProgress(pct, label) {
-  const wrap = $("#progress");
-  const bar = $("#progressBar");
-  const lbl = $("#progressLabel");
+  const wrap = $("#progress"), bar = $("#progressBar"), lbl = $("#progressLabel");
   if (!wrap || !bar || !lbl) return;
   wrap.hidden = false;
   const v = Math.max(0, Math.min(100, Number(pct) || 0));
   bar.style.width = `${v}%`;
   bar.setAttribute("aria-valuenow", String(Math.round(v)));
-  if (typeof label === "string") {
-    bar.setAttribute("aria-valuetext", label);
-    lbl.textContent = label;
-  }
+  if (typeof label === "string") { bar.setAttribute("aria-valuetext", label); lbl.textContent = label; }
+}
+
+// ===== Auto Sync (ao abrir/refresh) =====
+const AUTO_SYNC = true;
+const STALE_MS = 30 * 60 * 1000; // 30 min
+
+async function getStats() {
+  const r = await fetch('/api/orders/stats', { cache: 'no-store' });
+  if (!r.ok) throw new Error('stats');
+  return r.json();
+}
+async function maybeAutoSync(reason = 'load') {
+  if (!AUTO_SYNC || state.streaming) return;
+  try {
+    const s = await getStats();
+    const syncedAtMs = s?.syncedAt ? new Date(s.syncedAt).getTime() : 0;
+    const stale = !syncedAtMs || (Date.now() - syncedAtMs) > STALE_MS;
+    // se não tem nada ou está "stale", sincroniza automaticamente
+    if ((s?.total || 0) === 0 || stale) startStream();
+  } catch { /* silencioso */ }
 }
 
 // ===== Sincronização via SSE =====
 function cancelStream() {
-  if (state.es) {
-    try {
-      state.es.close();
-    } catch {}
-    state.es = null;
-  }
+  if (state.es) { try { state.es.close(); } catch {} state.es = null; }
   state.streaming = false;
   $("#syncBtn")?.removeAttribute("disabled");
   const cancel = $("#cancelBtn");
@@ -95,7 +92,12 @@ async function startStream() {
   showProgress();
   setProgress(1, "Conectando…");
 
-  const es = new EventSource("/api/orders/stream");
+  // Passa o agrupamento atual para o backend decidir janela/basis
+  const params = new URLSearchParams({ group: state.group });
+  // “Finalizadas” → base por fechamento e clamp implícito de 3 meses no backend
+  if (state.group === 'delivered') params.set('basis', 'closed');
+
+  const es = new EventSource("/api/orders/stream?" + params.toString());
   state.es = es;
 
   let total = 0;
@@ -104,32 +106,31 @@ async function startStream() {
   es.addEventListener("meta", (ev) => {
     try {
       const d = JSON.parse(ev.data || "{}");
-      total = Number(d.total || d.total_ids || 0) || 0;
-      setProgress(1, `Preparando… 0/${total}`);
+      // backend envia expectedTotal incremental por janela; usa o maior conhecido
+      const t = Number(d.expectedTotal || d.total || d.total_ids || 0) || 0;
+      if (t > total) total = t;
+      setProgress(1, `Preparando… 0/${total || '∞'}`);
     } catch {}
   });
 
-  es.addEventListener("batch", (ev) => {
-    try {
-      const d = JSON.parse(ev.data || "{}");
-      const c = Number(d.count || 0) || 0;
-      sent += c;
-      const pct = total ? Math.round((sent / total) * 100) : 0;
-      setProgress(pct, `Sincronizando… ${Math.min(sent, total)}/${total}`);
-    } catch {}
+  // backend envia linhas incrementais por 'row'
+  es.addEventListener("row", () => {
+    sent++;
+    const pct = total ? Math.round((sent / total) * 100) : 0;
+    setProgress(pct, `Sincronizando… ${sent}/${total || '∞'}`);
   });
 
   es.addEventListener("progress", (ev) => {
     try {
       const d = JSON.parse(ev.data || "{}");
-      const pct = Number(d.pct || 0);
       const s = Number(d.sent || sent);
-      const t = Number(d.total || total);
-      setProgress(pct || (t ? Math.round((s / t) * 100) : 0), `Sincronizando… ${s}/${t}`);
+      const t = Number(d.expectedTotal || d.total || total);
+      const pct = t ? Math.round((s / t) * 100) : 0;
+      setProgress(pct, `Sincronizando… ${s}/${t || '∞'}`);
     } catch {}
   });
 
-  es.addEventListener("done", async (ev) => {
+  es.addEventListener("done", async () => {
     setProgress(100, "Concluído");
     cancelStream();
     await refreshStats();
@@ -163,10 +164,8 @@ async function refreshStats() {
     $("#count-cross_docking").textContent = s?.forms?.cross_docking ?? 0;
     $("#count-turbo").textContent = s?.forms?.turbo ?? 0;
 
-    if (s?.syncedAt) updateSyncedAt(state.lastRange, s.syncedAt);
-  } catch {
-    // silencioso
-  }
+    if (s?.syncedAt) updateSyncedAt(s.syncedAt);
+  } catch { /* silencioso */ }
 }
 
 async function loadPage() {
@@ -200,7 +199,6 @@ function getShippingStatusRaw(row) {
     ""
   );
 }
-
 function shippingStatusLabel(s) {
   const v = String(s || "").toLowerCase();
   switch (v) {
@@ -221,7 +219,7 @@ function shippingStatusClass(s) {
   const v = String(s || "").toLowerCase();
   if (v === "delivered") return "ok";
   if (v === "ready_to_ship") return "warn";
-  if (v === "in_transit" || v === "shipped" || v === "out_for_delivery") return "ship";
+  if (["in_transit", "shipped", "out_for_delivery"].includes(v)) return "ship";
   return "muted";
 }
 function badgeShipping(raw) {
@@ -232,8 +230,7 @@ function badgeShipping(raw) {
 
 function appendRow(row) {
   const o = row?.order || {};
-  const buyer =
-    (o?.buyer && (o.buyer.nickname || o.buyer.first_name)) || "";
+  const buyer = (o?.buyer && (o.buyer.nickname || o.buyer.first_name)) || "";
   const total = o.total_amount != null ? o.total_amount : o.paid_amount;
   const date = o.date_closed || o.date_created;
   const items = Array.isArray(o.order_items)
@@ -261,14 +258,11 @@ function appendRow(row) {
 }
 
 // ===== UI e listeners =====
-function updateSyncedAt(range, syncedAtISO) {
+function updateSyncedAt(syncedAtISO) {
   const el = $("#syncedAt");
   if (!el) return;
   const d = new Date(syncedAtISO);
-  if (Number.isNaN(d.getTime())) {
-    el.textContent = "Sincronização concluída";
-    return;
-  }
+  if (Number.isNaN(d.getTime())) { el.textContent = "Sincronização concluída"; return; }
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -312,27 +306,9 @@ function initUI() {
 
   // paginação
   $("#prevBtn")?.addEventListener("click", () => {
-    if (state.page > 1) {
-      state.page--;
-      loadPage();
-    }
+    if (state.page > 1) { state.page--; loadPage(); }
   });
-  $("#nextBtn")?.addEventListener("click", () => {
-    state.page++;
-    loadPage();
-  });
-
-  // período
-  const periodSelect = $("#periodSelect");
-  if (periodSelect) {
-    periodSelect.value = state.lastRange || "7d";
-    periodSelect.addEventListener("change", () => {
-      state.lastRange = periodSelect.value;
-      const custom = periodSelect.value === "custom";
-      const cd = $("#customDates");
-      if (cd) cd.style.display = custom ? "inline-flex" : "none";
-    });
-  }
+  $("#nextBtn")?.addEventListener("click", () => { state.page++; loadPage(); });
 
   // sync
   $("#syncBtn")?.addEventListener("click", startStream);
@@ -341,6 +317,7 @@ function initUI() {
   // carga inicial
   refreshStats();
   loadPage();
+  maybeAutoSync('init'); // dispara auto-sync se necessário
 }
 
 // auto init
