@@ -100,6 +100,10 @@ app.get('/oauth/paste', (req, res) => {
 app.get('/ads', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'ads.html'));
 });
+app.get('/post-sale', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'post-sale.html'));
+});
+
 
 // -------------------- Diag + Flash --------------------
 app.get('/diag', (req, res) => {
