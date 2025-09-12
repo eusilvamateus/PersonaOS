@@ -298,7 +298,7 @@ app.get('/api/messages/unread', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
     const role = (req.query.role || 'seller').toLowerCase();
-    const { data } = await ml.get('/messages/unread', { params: { role, tag: 'post_sale' } });
+    const { data } = await ml.get('/messages/unread', { params: { role, tag: 'post_sale', site_id: SITE_ID } });
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro em /api/messages/unread: ${fmtErr(err)}`);
@@ -316,7 +316,7 @@ app.get('/api/messages/packs/:packId', ensureAccessToken, async (req, res) => {
     if (!sellerId) return res.status(400).send('seller_id ausente');
 
     const url = `/messages/packs/${encodeURIComponent(packId)}/sellers/${encodeURIComponent(sellerId)}`;
-    const { data } = await ml.get(url, { params: { tag: 'post_sale', mark_as_read: mark, limit, offset } });
+    const { data } = await ml.get(url, { params: { tag: 'post_sale', mark_as_read: mark, limit, offset, site_id: SITE_ID } });
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro em /api/messages/packs/:packId: ${fmtErr(err)}`);
@@ -338,7 +338,7 @@ app.post('/api/messages/packs/:packId/send', ensureAccessToken, async (req, res)
     const payload = { from: { user_id: String(sellerId) }, to: { user_id: String(to_user_id) }, text: String(text) };
     if (attachments && Array.isArray(attachments) && attachments.length) payload.attachments = attachments;
 
-    const { data } = await ml.post(url, payload, { params: { tag: 'post_sale' }, idempotent: false });
+    const { data } = await ml.post(url, payload, { params: { tag: 'post_sale', site_id: SITE_ID }, idempotent: false });
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro ao enviar mensagem: ${fmtErr(err)}`);
