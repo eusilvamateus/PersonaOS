@@ -1,328 +1,455 @@
-// public/orders.js — versão com auto-sync ao abrir/refresh e SSE por grupo
+// public/orders.js - página de Pedidos
+'use strict';
 
-// ===== Utils DOM e formatação =====
+// ===== Helpers =====
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const esc = (s) =>
-  s == null
-    ? ""
-    : String(s)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
 
-function fmtCurrency(n) {
-  if (n == null || Number.isNaN(Number(n))) return "";
-  return Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-function fmtDateTime(s) {
-  if (!s) return "";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return esc(String(s));
-  return d.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+const fmtCurrency = (v) =>
+  (typeof v === 'number' ? v : Number(v || 0)).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
   });
+
+const pad2 = (n) => String(n).padStart(2, '0');
+function fmtDateTimeBR(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const dd = pad2(d.getDate());
+  const mm = pad2(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  const hh = pad2(d.getHours());
+  const mi = pad2(d.getMinutes());
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
 }
 
-// ===== Estado da página =====
-let state = {
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function toast(msg, ms = 2200) {
+  let stack = document.querySelector('.toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.className = 'toast-stack';
+    Object.assign(stack.style, {
+      position: 'fixed',
+      top: '16px',
+      right: '16px',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px'
+    });
+    document.body.appendChild(stack);
+  }
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  stack.appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
+
+// ===== Estado =====
+const state = {
   page: 1,
   pageSize: 50,
-  group: "today", // today | upcoming | in_transit | delivered | ready_to_ship | all
-  form: "all",    // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
+  group: 'all',
   es: null,
   streaming: false,
-  lastRange: "7d",
+  lastRange: null // { from, to, basis }
 };
 
-// ===== Progresso =====
-function showProgress() { $("#progress")?.removeAttribute("hidden"); }
-function hideProgressSoon() { setTimeout(() => $("#progress")?.setAttribute("hidden", "true"), 400); }
-function setProgress(pct, label) {
-  const wrap = $("#progress"), bar = $("#progressBar"), lbl = $("#progressLabel");
-  if (!wrap || !bar || !lbl) return;
+// ===== Progresso acessível =====
+let hideTimer = null;
+function progressEls() {
+  return {
+    wrap: $('#progress'),
+    bar: $('#progressBar'),
+    label: $('#progressLabel')
+  };
+}
+function progressReset() {
+  const { bar, label } = progressEls();
+  if (bar) bar.style.width = '0%';
+  if (label) label.textContent = 'Aguardando…';
+}
+function progressHideNow() {
+  const { wrap } = progressEls();
+  if (wrap) {
+    try {
+      wrap.removeAttribute('aria-busy');
+      wrap.removeAttribute('aria-label');
+    } catch {}
+    wrap.hidden = true;
+  }
+  progressReset();
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+}
+function progressStart(text = 'Sincronizando…', pct = 5) {
+  const { wrap } = progressEls();
+  if (!wrap) return;
   wrap.hidden = false;
-  const v = Math.max(0, Math.min(100, Number(pct) || 0));
-  bar.style.width = `${v}%`;
-  bar.setAttribute("aria-valuenow", String(Math.round(v)));
-  if (typeof label === "string") { bar.setAttribute("aria-valuetext", label); lbl.textContent = label; }
-}
-
-// ===== Auto Sync (ao abrir/refresh) =====
-const AUTO_SYNC = true;
-const STALE_MS = 30 * 60 * 1000; // 30 min
-
-async function getStats() {
-  const r = await fetch('/api/orders/stats', { cache: 'no-store' });
-  if (!r.ok) throw new Error('stats');
-  return r.json();
-}
-async function maybeAutoSync(reason = 'load') {
-  if (!AUTO_SYNC || state.streaming) return;
   try {
-    const s = await getStats();
-    const syncedAtMs = s?.syncedAt ? new Date(s.syncedAt).getTime() : 0;
-    const stale = !syncedAtMs || (Date.now() - syncedAtMs) > STALE_MS;
-    // se não tem nada ou está "stale", sincroniza automaticamente
-    if ((s?.total || 0) === 0 || stale) startStream();
-  } catch { /* silencioso */ }
+    wrap.setAttribute('aria-busy', 'true');
+    if (typeof text === 'string') wrap.setAttribute('aria-label', text);
+  } catch {}
+  progressUpdate(pct, text);
+}
+function progressUpdate(pct = 10, text) {
+  const { bar, label } = progressEls();
+  if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(pct) || 0))}%`;
+  if (typeof text === 'string' && label) label.textContent = text;
+  try {
+    const w = $('#progress');
+    if (w && typeof text === 'string') w.setAttribute('aria-label', text);
+  } catch {}
+}
+function progressFinish(text = 'Concluído', delay = 700) {
+  try {
+    $('#progress')?.setAttribute('aria-busy', 'false');
+  } catch {}
+  progressUpdate(100, text);
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(progressHideNow, delay);
+}
+function progressError(text = 'Erro', delay = 1400) {
+  try {
+    $('#progress')?.setAttribute('aria-busy', 'false');
+  } catch {}
+  progressUpdate(100, text);
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(progressHideNow, delay);
+}
+function progressCancel(text = 'Stream cancelado', delay = 900) {
+  try {
+    $('#progress')?.setAttribute('aria-busy', 'false');
+  } catch {}
+  progressUpdate(100, text);
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(progressHideNow, delay);
 }
 
-// ===== Sincronização via SSE =====
-function cancelStream() {
-  if (state.es) { try { state.es.close(); } catch {} state.es = null; }
-  state.streaming = false;
-  $("#syncBtn")?.removeAttribute("disabled");
-  const cancel = $("#cancelBtn");
-  if (cancel) cancel.style.display = "none";
-  hideProgressSoon();
+// ===== Intervalos de Data =====
+function todayAt(hour = 0, min = 0, sec = 0, ms = 0) {
+  const d = new Date();
+  d.setHours(hour, min, sec, ms);
+  return d;
+}
+function toISO(d) {
+  return new Date(d).toISOString();
+}
+function getSelectedRange() {
+  const sel = $('#periodSelect')?.value || '7d';
+  if (sel === 'custom') {
+    const from = $('#fromDate')?.value;
+    const to = $('#toDate')?.value;
+    if (from && to) {
+      const fromD = new Date(from);
+      const toD = new Date(to);
+      toD.setHours(23, 59, 59, 999);
+      return { from: toISO(fromD), to: toISO(toD), basis: 'created' };
+    }
+  }
+  const now = new Date();
+  let fromD;
+  if (sel === '24h') {
+    fromD = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  } else if (sel === '1m') {
+    fromD = new Date(now); fromD.setMonth(fromD.getMonth() - 1);
+  } else if (sel === '6m') {
+    fromD = new Date(now); fromD.setMonth(fromD.getMonth() - 6);
+  } else {
+    fromD = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
+  const toD = now;
+  return { from: toISO(fromD), to: toISO(toD), basis: 'created' };
+}
+function updateCustomDateVisibility() {
+  const sel = $('#periodSelect')?.value || '7d';
+  const show = sel === 'custom';
+  const from = $('#fromDate');
+  const to = $('#toDate');
+  if (from) from.style.display = show ? '' : 'none';
+  if (to) to.style.display = show ? '' : 'none';
 }
 
-async function startStream() {
+// ===== Chips de Grupo =====
+function setActiveGroup(group) {
+  state.group = group;
+  $$('#chips .chip').forEach((btn) => {
+    if (btn.getAttribute('data-group') === group) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+}
+function updateChipCounts(stats, total) {
+  $('#count-all') && ($('#count-all').textContent = String(total ?? 0));
+  $('#count-delivered') && ($('#count-delivered').textContent = String(stats?.delivered ?? 0));
+  $('#count-in_transit') && ($('#count-in_transit').textContent = String(stats?.in_transit ?? 0));
+  $('#count-ready_to_ship') && ($('#count-ready_to_ship').textContent = String(stats?.ready_to_ship ?? 0));
+  $('#count-other') && ($('#count-other').textContent = String(stats?.other ?? 0));
+}
+
+// ===== Carregamento de dados =====
+async function fetchStats() {
+  try {
+    const r = await fetch('/api/orders/stats', { cache: 'no-store', credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    updateChipCounts(j?.stats, j?.total);
+    return j;
+  } catch (err) {
+    console.error('Falha em /api/orders/stats', err);
+    toast('Falha ao consultar estatísticas');
+    return null;
+  }
+}
+async function fetchPage(page = 1) {
+  try {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(state.pageSize),
+      group: state.group || 'all'
+    });
+    const r = await fetch(`/api/orders/page?${params.toString()}`, {
+      cache: 'no-store',
+      credentials: 'same-origin'
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    renderTable(j?.data || []);
+    updatePagination(page, j?.pages || 1);
+    return j;
+  } catch (err) {
+    console.error('Falha em /api/orders/page', err);
+    toast('Falha ao carregar a página de pedidos');
+    return null;
+  }
+}
+async function doSyncHttp() {
+  const { from, to, basis } = getSelectedRange();
+  const params = new URLSearchParams({ from, to, basis, windowDays: '30' });
+  progressStart('Sincronizando pedidos…', 8);
+  try {
+    const r = await fetch(`/api/orders/sync?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    await fetchStats();
+    await fetchPage(1);
+    progressFinish('Sincronização concluída');
+    return j;
+  } catch (err) {
+    console.error('Erro no sync HTTP', err);
+    toast('Falha ao sincronizar pedidos');
+    progressError('Erro ao sincronizar pedidos');
+    return null;
+  }
+}
+
+// ===== Stream SSE =====
+function startStream() {
   if (state.streaming) return;
-  state.streaming = true;
-  $("#syncBtn")?.setAttribute("disabled", "true");
-  const cancel = $("#cancelBtn");
-  if (cancel) cancel.style.display = "inline-block";
-  showProgress();
-  setProgress(1, "Conectando…");
+  const syncBtn = $('#syncBtn');
+  const cancelBtn = $('#cancelBtn');
+  if (syncBtn) syncBtn.disabled = true;
+  if (cancelBtn) cancelBtn.style.display = '';
 
-  // Passa o agrupamento atual para o backend decidir janela/basis
-  const params = new URLSearchParams({ group: state.group });
-  // “Finalizadas” → base por fechamento e clamp implícito de 3 meses no backend
-  if (state.group === 'delivered') params.set('basis', 'closed');
+  const { from, to, basis } = getSelectedRange();
+  state.lastRange = { from, to, basis };
 
-  const es = new EventSource("/api/orders/stream?" + params.toString());
-  state.es = es;
+  const qs = new URLSearchParams({ from, to, basis, windowDays: '30' });
+  progressStart('Iniciando stream de pedidos…', 5);
 
-  let total = 0;
-  let sent = 0;
-
-  es.addEventListener("meta", (ev) => {
-    try {
-      const d = JSON.parse(ev.data || "{}");
-      // backend envia expectedTotal incremental por janela; usa o maior conhecido
-      const t = Number(d.expectedTotal || d.total || d.total_ids || 0) || 0;
-      if (t > total) total = t;
-      setProgress(1, `Preparando… 0/${total || '∞'}`);
-    } catch {}
-  });
-
-  // backend envia linhas incrementais por 'row'
-  es.addEventListener("row", () => {
-    sent++;
-    const pct = total ? Math.round((sent / total) * 100) : 0;
-    setProgress(pct, `Sincronizando… ${sent}/${total || '∞'}`);
-  });
-
-  es.addEventListener("progress", (ev) => {
-    try {
-      const d = JSON.parse(ev.data || "{}");
-      const s = Number(d.sent || sent);
-      const t = Number(d.expectedTotal || d.total || total);
-      const pct = t ? Math.round((s / t) * 100) : 0;
-      setProgress(pct, `Sincronizando… ${s}/${t || '∞'}`);
-    } catch {}
-  });
-
-  es.addEventListener("done", async () => {
-    setProgress(100, "Concluído");
-    cancelStream();
-    await refreshStats();
-    await loadPage();
-  });
-
-  es.addEventListener("error", () => {
-    cancelStream();
-    setProgress(0, "Erro no stream");
-    hideProgressSoon();
-  });
-}
-
-// ===== Stats e listagem =====
-async function refreshStats() {
   try {
-    const r = await fetch("/api/orders/stats");
-    const s = await r.json();
+    state.es = new EventSource(`/api/orders/stream?${qs.toString()}`, { withCredentials: true });
+  } catch (err) {
+    console.error('Falha ao abrir EventSource', err);
+    toast('Seu navegador bloqueou a conexão de stream');
+    progressError('Falha ao iniciar stream');
+    if (syncBtn) syncBtn.disabled = false;
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    return;
+  }
 
-    // chips topo
-    $("#count-today").textContent = s?.chips?.today ?? 0;
-    $("#count-upcoming").textContent = s?.chips?.upcoming ?? 0;
-    $("#count-in_transit").textContent = s?.chips?.in_transit ?? s?.stats?.in_transit ?? 0;
-    $("#count-delivered").textContent = s?.chips?.delivered ?? s?.stats?.delivered ?? 0;
+  state.streaming = true;
 
-    // formas
-    $("#count-flex").textContent = s?.forms?.flex ?? 0;
-    $("#count-full").textContent = s?.forms?.full ?? 0;
-    $("#count-drop_off").textContent = s?.forms?.drop_off ?? 0;
-    $("#count-xd_drop_off").textContent = s?.forms?.xd_drop_off ?? 0;
-    $("#count-cross_docking").textContent = s?.forms?.cross_docking ?? 0;
-    $("#count-turbo").textContent = s?.forms?.turbo ?? 0;
-
-    if (s?.syncedAt) updateSyncedAt(s.syncedAt);
-  } catch { /* silencioso */ }
-}
-
-async function loadPage() {
-  const params = new URLSearchParams({
-    page: String(state.page),
-    pageSize: String(state.pageSize),
-    group: state.group,
-    form: state.form,
+  state.es.addEventListener('open', () => {
+    progressUpdate(10, 'Conexão aberta…');
   });
-  const r = await fetch("/api/orders/page?" + params.toString());
-  const p = await r.json();
 
-  $("#pageInfo").textContent = `Página ${p.page} de ${p.pages}`;
-  $("#prevBtn").disabled = p.page <= 1;
-  $("#nextBtn").disabled = p.page >= p.pages;
+  state.es.addEventListener('meta', (evt) => {
+    try {
+      const data = JSON.parse(evt.data);
+      const win = data?.window;
+      if (win?.from && win?.to) {
+        const msg = `Janela ${new Date(win.from).toLocaleDateString('pt-BR')} a ${new Date(win.to).toLocaleDateString('pt-BR')}`;
+        progressUpdate(undefined, msg);
+      }
+      if (typeof data?.expectedTotal === 'number') {
+        progressUpdate(undefined, `Previstos ${data.expectedTotal} pedidos…`);
+      }
+    } catch {}
+  });
 
-  const tbody = $("#tbody");
-  tbody.innerHTML = "";
-  (p.data || []).forEach(appendRow);
-  if (!p.data || !p.data.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:48px;">Sem pedidos para exibir.</td></tr>`;
+  state.es.addEventListener('item', (evt) => {
+    try {
+      const data = JSON.parse(evt.data);
+      if (typeof data?.sent === 'number' && typeof data?.expectedTotal === 'number' && data.expectedTotal > 0) {
+        const pct = Math.round((data.sent / data.expectedTotal) * 100);
+        progressUpdate(pct, `Processados ${data.sent}/${data.expectedTotal}`);
+      }
+    } catch {}
+  });
+
+  state.es.addEventListener('done', async (evt) => {
+    try {
+      const data = JSON.parse(evt.data || '{}');
+      if (typeof data?.expectedTotal === 'number' && typeof data?.sent === 'number' && data.expectedTotal > 0) {
+        progressUpdate(100, `Recebidos ${data.sent}/${data.expectedTotal}`);
+      }
+    } catch {}
+    progressFinish('Sincronização concluída');
+    stopStream(false);
+    await fetchStats();
+    await fetchPage(1);
+  });
+
+  state.es.addEventListener('error', (evt) => {
+    console.error('SSE erro', evt);
+    toast('Conexão de stream encerrada');
+    progressError('Conexão encerrada');
+    stopStream(true);
+  });
+}
+
+function stopStream(userCanceled = true) {
+  if (state.es) {
+    try { state.es.close(); } catch {}
   }
+  state.es = null;
+  state.streaming = false;
+
+  const syncBtn = $('#syncBtn');
+  const cancelBtn = $('#cancelBtn');
+  if (syncBtn) syncBtn.disabled = false;
+  if (cancelBtn) cancelBtn.style.display = 'none';
+
+  if (userCanceled) progressCancel('Stream cancelado');
 }
 
-// ===== Renderização de linhas =====
-function getShippingStatusRaw(row) {
-  return (
-    row?.shipping?.status ||
-    row?.order?.shipping_status ||
-    row?.shipping_group ||
-    ""
-  );
+// ===== Renderização =====
+function updatePagination(page, pages) {
+  state.page = Math.max(1, Math.min(page || 1, pages || 1));
+  $('#pageLabel') && ($('#pageLabel').textContent = `Página ${state.page}`);
+  const prev = $('#prevBtn');
+  const next = $('#nextBtn');
+  if (prev) prev.disabled = state.page <= 1;
+  if (next) next.disabled = state.page >= (pages || 1);
 }
-function shippingStatusLabel(s) {
-  const v = String(s || "").toLowerCase();
-  switch (v) {
-    case "ready_to_ship": return "Pronto p/ envio";
-    case "to_be_agreed": return "A combinar";
-    case "pending": return "Pendente";
-    case "handling": return "Manuseando";
-    case "shipped": return "Enviado";
-    case "in_transit": return "Em trânsito";
-    case "out_for_delivery": return "Saiu p/ entrega";
-    case "soon_deliver": return "Entrega em breve";
-    case "delivered": return "Entregue";
-    case "not_delivered": return "Não entregue";
-    default: return v || "—";
+
+function renderTable(rows) {
+  const tb = $('#tbody');
+  if (!tb) return;
+  if (!rows || rows.length === 0) {
+    tb.innerHTML = `<tr><td colspan="9" class="muted">Nenhum pedido encontrado para o filtro atual.</td></tr>`;
+    return;
   }
-}
-function shippingStatusClass(s) {
-  const v = String(s || "").toLowerCase();
-  if (v === "delivered") return "ok";
-  if (v === "ready_to_ship") return "warn";
-  if (["in_transit", "shipped", "out_for_delivery"].includes(v)) return "ship";
-  return "muted";
-}
-function badgeShipping(raw) {
-  const label = shippingStatusLabel(raw);
-  const cls = shippingStatusClass(raw);
-  return `<span class="badge-status shipping ${cls}">${esc(label)}</span>`;
+  const html = rows.map(renderRow).join('');
+  tb.innerHTML = html;
 }
 
-function appendRow(row) {
+function orderDisplayDate(o) {
+  return o?.date_closed || o?.date_created || o?.date_last_updated || '';
+}
+
+function renderRow(row) {
   const o = row?.order || {};
-  const buyer = (o?.buyer && (o.buyer.nickname || o.buyer.first_name)) || "";
-  const total = o.total_amount != null ? o.total_amount : o.paid_amount;
-  const date = o.date_closed || o.date_created;
-  const items = Array.isArray(o.order_items)
-    ? o.order_items.map((it) => esc(it?.item?.title || "")).join("<br>")
-    : "";
+  const ship = row?.shipping || {};
+  const dateIso = orderDisplayDate(o);
+  const date = fmtDateTimeBR(dateIso);
 
-  const shipRaw = getShippingStatusRaw(row);
-  const shipBadge = badgeShipping(shipRaw);
-  const shippingId = row?.shipping?.id || "";
-  const packId = o?.pack_id || "";
+  const orderId = o?.id || '';
+  const buyer = o?.buyer || {};
+  const buyerName = buyer?.nickname || buyer?.first_name || buyer?.last_name
+    ? `${buyer?.first_name || ''} ${buyer?.last_name || ''}`.trim() || buyer?.nickname || ''
+    : (buyer?.nickname || '');
 
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td><strong>${esc(o.id || "")}</strong></td>
-    <td>${fmtDateTime(date)}</td>
-    <td>${esc(buyer)}</td>
-    <td>${items}</td>
-    <td>${fmtCurrency(total)}</td>
-    <td>${esc(shippingStatusLabel(shipRaw))}</td>
-    <td>${shipBadge}${row?.turbo ? ' <span class="badge-status ok">Turbo</span>' : ''}</td>
-    <td>${esc(shippingId)}</td>
-    <td>${esc(packId)}</td>
-  `;
-  $("#tbody").appendChild(tr);
-}
+  const items = Array.isArray(o?.order_items) ? o.order_items : [];
+  const itemsText = items
+    .map(it => `${escapeHtml(it?.item?.title || it?.title || '')} x${Number(it?.quantity || 0)}`)
+    .join('<br>');
 
-// ===== UI e listeners =====
-function updateSyncedAt(syncedAtISO) {
-  const el = $("#syncedAt");
-  if (!el) return;
-  const d = new Date(syncedAtISO);
-  if (Number.isNaN(d.getTime())) { el.textContent = "Sincronização concluída"; return; }
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  el.textContent = `Sincronizado em ${dd}/${mo} ${hh}:${mm}`;
-}
+  const totalAmount = o?.total_amount ?? o?.paid_amount ?? 0;
 
-function initUI() {
-  // page size
-  const pageSizeSel = $("#pageSize");
-  if (pageSizeSel) {
-    pageSizeSel.value = String(state.pageSize);
-    pageSizeSel.addEventListener("change", () => {
-      state.pageSize = Number(pageSizeSel.value || 50);
-      state.page = 1;
-      if (!state.streaming) loadPage();
-    });
+  let payStatus = '';
+  if (Array.isArray(o?.payments) && o.payments.length) {
+    const p = o.payments[0];
+    payStatus = `${p?.status || ''}${p?.status_detail ? ` (${p.status_detail})` : ''}`.trim();
   }
 
-  // chips topo
-  $$("#chips .chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$("#chips .chip").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.group = btn.dataset.group;
-      state.page = 1;
-      if (!state.streaming) loadPage();
+  const shippingStatus = row?.shipping_group || (ship?.status || '');
+
+  return `
+    <tr>
+      <td>${escapeHtml(date)}</td>
+      <td>${escapeHtml(String(orderId))}</td>
+      <td>${escapeHtml(buyerName)}</td>
+      <td>${itemsText || ''}</td>
+      <td>${fmtCurrency(totalAmount)}</td>
+      <td>${escapeHtml(payStatus)}</td>
+      <td>${escapeHtml(shippingStatus)}</td>
+      <td>${escapeHtml(String(ship?.id || ''))}</td>
+      <td>${escapeHtml(String(o?.pack_id || ''))}</td>
+    </tr>
+  `;
+}
+
+// ===== Bind de UI =====
+function bindUI() {
+  $$('#chips .chip').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const g = btn.getAttribute('data-group') || 'all';
+      setActiveGroup(g);
+      await fetchPage(1);
     });
   });
 
-  // chips formas
-  $$("#forms .chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$("#forms .chip").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.form = btn.dataset.form;
-      state.page = 1;
-      if (!state.streaming) loadPage();
-    });
+  $('#periodSelect')?.addEventListener('change', () => {
+    updateCustomDateVisibility();
   });
+  updateCustomDateVisibility();
 
-  // paginação
-  $("#prevBtn")?.addEventListener("click", () => {
-    if (state.page > 1) { state.page--; loadPage(); }
+  $('#syncBtn')?.addEventListener('click', startStream);
+  $('#cancelBtn')?.addEventListener('click', () => stopStream(true));
+
+  $('#prevBtn')?.addEventListener('click', async () => {
+    if (state.page > 1) {
+      await fetchPage(state.page - 1);
+    }
   });
-  $("#nextBtn")?.addEventListener("click", () => { state.page++; loadPage(); });
-
-  // sync
-  $("#syncBtn")?.addEventListener("click", startStream);
-  $("#cancelBtn")?.addEventListener("click", cancelStream);
-
-  // carga inicial
-  refreshStats();
-  loadPage();
-  maybeAutoSync('init'); // dispara auto-sync se necessário
+  $('#nextBtn')?.addEventListener('click', async () => {
+    await fetchPage(state.page + 1);
+  });
 }
 
-// auto init
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initUI);
-} else {
-  initUI();
+// ===== Inicialização =====
+async function init() {
+  bindUI();
+  await fetchStats();
+  await fetchPage(1);
 }
+
+document.addEventListener('DOMContentLoaded', init);

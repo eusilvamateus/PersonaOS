@@ -1,5 +1,4 @@
-// index.js — backend com clamp de 3 meses para “Finalizadas” e /shipments com x-format-new
-
+// index.js
 import 'dotenv/config';
 import express from 'express';
 import axios from 'axios';
@@ -58,8 +57,14 @@ async function saveTokens(userId, payload) {
 }
 
 // -------------------- Flash helpers --------------------
-function setFlash(req, type, message) { req.session.flash = { type, message, ts: Date.now() }; }
-function consumeFlash(req) { const f = req.session.flash; delete req.session.flash; return f || null; }
+function setFlash(req, type, message) {
+  req.session.flash = { type, message, ts: Date.now() };
+}
+function consumeFlash(req) {
+  const f = req.session.flash;
+  delete req.session.flash;
+  return f || null;
+}
 
 // -------------------- Middlewares --------------------
 app.use(cookieParser());
@@ -81,12 +86,24 @@ const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
 
 // -------------------- Páginas --------------------
 app.get('/', async (req, res) => {
+  // Suporta caso o provedor redirecione direto para "/?code=...&state=..."
   if (req.query.code) return oauthCallbackHandler(req, res);
   res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
-app.get('/orders', (req, res) => res.sendFile(path.join(__dirname, 'views', 'orders.html')));
-app.get('/oauth/paste', (req, res) => res.sendFile(path.join(__dirname, 'views', 'oauth-paste.html')));
-app.get('/ads', (req, res) => res.sendFile(path.join(__dirname, 'views', 'ads.html')));
+app.get('/orders', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'orders.html'));
+});
+app.get('/oauth/paste', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'oauth-paste.html'));
+});
+// página dedicada de anúncios
+app.get('/ads', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'ads.html'));
+});
+app.get('/post-sale', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'post-sale.html'));
+});
+
 
 // -------------------- Diag + Flash --------------------
 app.get('/diag', (req, res) => {
@@ -103,7 +120,12 @@ app.get('/diag', (req, res) => {
     now_iso: new Date().toISOString()
   });
 });
-app.get('/api/flash', (req, res) => res.json(consumeFlash(req) || {}));
+
+// Home busca a mensagem e ela é consumida (apagada) aqui
+app.get('/api/flash', (req, res) => {
+  const flash = consumeFlash(req);
+  res.json(flash || {});
+});
 
 // -------------------- OAuth --------------------
 app.get('/login', (req, res) => {
@@ -134,13 +156,18 @@ app.get('/callback', oauthCallbackHandler);
 app.post('/oauth/paste', async (req, res) => {
   try {
     const { code, state } = req.body || {};
-    if (!code || !state) { setFlash(req, 'error', 'Preencha code e state.'); return res.redirect('/'); }
+    if (!code || !state) {
+      setFlash(req, 'error', 'Preencha code e state.');
+      return res.redirect('/');
+    }
     if (!req.session.oauth_state || state !== req.session.oauth_state) {
       setFlash(req, 'error', 'State inválido. Clique em “Gerar novo state” e tente novamente.');
       return res.redirect('/');
     }
+
     const token = await exchangeCodeForToken(code, req);
     await onLoginSuccess(req, token);
+
     const nick = req.session?.nickname || 'vendedor';
     setFlash(req, 'success', `Autorização concluída! Bem-vindo, ${nick}.`);
     return res.redirect('/');
@@ -270,7 +297,7 @@ function mlFor(req) {
   });
 }
 
-// -------------------- MENSAGENS (mantido) --------------------
+// -------------------- MENSAGENS --------------------
 app.get('/api/messages/unread', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
@@ -356,10 +383,301 @@ app.get('/api/messages/attachments/:attachmentId', ensureAccessToken, async (req
   }
 });
 
+// -------------------- ITENS (ANÚNCIOS) BÁSICO --------------------
+async function collectAllItemIds(req, ml) {
+  const userId = req.session.user_id;
+  const base = `/users/${userId}/items/search`;
+
+  let ids = [];
+  let usedScan = false;
+
+  try {
+    usedScan = true;
+    let scroll_id = null;
+    let guard = 0;
+    do {
+      const params = scroll_id ? { search_type: 'scan', scroll_id } : { search_type: 'scan' };
+      const { data } = await ml.get(base, { params });
+      const results = data?.results || [];
+      ids.push(...results);
+      scroll_id = data?.scroll_id || null;
+      guard++;
+      if (guard > 5000) break;
+    } while (scroll_id);
+  } catch {
+    usedScan = false;
+    ids = [];
+  }
+
+  if (!usedScan) {
+    const limit = 100;
+    let offset = 0;
+    while (true) {
+      const params = { limit, offset };
+      const { data } = await ml.get(base, { params });
+      const results = data?.results || [];
+      ids.push(...results);
+      if (results.length < limit) break;
+      offset += limit;
+      if (offset > 2_000_000) break;
+    }
+  }
+
+  return Array.from(new Set(ids));
+}
+
+async function fetchItemDetails(ml, ids, attributes) {
+  const url = `/items`;
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
+
+  const items = [];
+  for (const chunk of chunks) {
+    const { data } = await ml.get(url, { params: { ids: chunk.join(','), attributes } });
+    const arr = Array.isArray(data) ? data : [];
+    for (const row of arr) if (row && row.code === 200 && row.body) items.push(row.body);
+  }
+  return items;
+}
+
+app.get('/api/items/all', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+    const ids = await collectAllItemIds(req, ml);
+    const items = await fetchItemDetails(ml, ids, attributes);
+    res.json({ total: items.length, attributes, items });
+  } catch (err) {
+    res.status(500).send(`Erro em /api/items/all: ${fmtErr(err)}`);
+  }
+});
+
+app.get('/api/items/all/stream', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    const ping = setInterval(() => { try { res.write(':\n\n'); } catch {} }, 25000);
+
+    let closed = false;
+    req.on('close', () => { closed = true; clearInterval(ping); });
+
+    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+
+    const ids = await collectAllItemIds(req, ml);
+    if (closed) return;
+    res.write(`event: meta\ndata: ${JSON.stringify({ total_ids: ids.length })}\n\n`);
+
+    const url = `/items`;
+    let sent = 0;
+
+    for (let i = 0; i < ids.length; i += 20) {
+      if (closed) break;
+      const slice = ids.slice(i, i + 20);
+      try {
+        const { data } = await ml.get(url, { params: { ids: slice.join(','), attributes } });
+        const arr = Array.isArray(data) ? data : [];
+        const batch = arr.filter(x => x && x.code === 200 && x.body).map(x => x.body);
+        sent += batch.length;
+        res.write(`event: batch\ndata: ${JSON.stringify({ count: batch.length, items: batch })}\n\n`);
+        res.write(`event: progress\ndata: ${JSON.stringify({ sent, total: ids.length })}\n\n`);
+      } catch (e) {
+        let detail = null;
+        try { detail = JSON.parse(fmtErr(e)); } catch { detail = { message: String(e?.message || 'error') }; }
+        res.write(`event: error\ndata: ${JSON.stringify({ message: 'multiget_failed', detail })}\n\n`);
+      }
+    }
+
+    if (!closed) res.write(`event: done\ndata: ${JSON.stringify({ sent })}\n\n`);
+  } catch (err) {
+    res.status(500).end(`Erro em /api/items/all/stream: ${fmtErr(err)}`);
+  }
+});
+
+// -------------------- ADS (NOVO): SEARCH + DESCRIPTION --------------------
+// GET /api/ads/search?include=details,sale_price
+app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const sellerId = req.session.user_id || (await ml.get('/users/me')).data.id;
+
+    const {
+      q,
+      status,              // active|paused|closed|...
+      category_id,         // MLB...
+      free_shipping,       // 'true'|'false'
+      sort = 'relevance',  // relevance|last_updated_desc|price_asc|price_desc|sold_desc
+      limit = 50,
+      offset = 0,
+      include = '',
+      attributes
+    } = req.query;
+
+    const wants = String(include || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    // Decide a fonte:
+    // - Usa /sites quando há q/category/frete grátis/sort especial
+    // - Se for apenas status -> /users
+    const sortNeedsSites = ['price_asc', 'price_desc', 'last_updated_desc'].includes(String(sort));
+    const useSites = Boolean(q || category_id || free_shipping === 'true' || sortNeedsSites);
+
+    const paging = { total: Number(limit), limit: Number(limit), offset: Number(offset) };
+    let ids = [];
+    let available_filters = [];
+    let source = useSites ? 'sites' : 'users';
+
+    async function fetchFromSites() {
+      const url = new URL(`/sites/${SITE_ID}/search`, BASE_API_URL);
+      url.searchParams.set('seller_id', String(sellerId));
+      if (q) url.searchParams.set('q', String(q));
+      if (category_id) url.searchParams.set('category', String(category_id));
+      if (free_shipping === 'true') url.searchParams.set('shipping_cost', 'free');
+      const sortMap = { relevance: null, price_asc: 'price_asc', price_desc: 'price_desc', last_updated_desc: 'date_desc' };
+      const mapped = sortMap[sort] ?? null;
+      if (mapped) url.searchParams.set('sort', mapped);
+      url.searchParams.set('limit', String(limit));
+      url.searchParams.set('offset', String(offset));
+      const { data } = await ml.get(url.pathname + url.search);
+      const results = Array.isArray(data?.results) ? data.results : [];
+      available_filters = Array.isArray(data?.available_filters) ? data.available_filters : [];
+      paging.total = Number(data?.paging?.total || results.length);
+      return results.map(r => r.id);
+    }
+
+    async function fetchFromUsers() {
+      const url = new URL(`/users/${sellerId}/items/search`, BASE_API_URL);
+      if (status) url.searchParams.set('status', String(status));
+      url.searchParams.set('limit', String(limit));
+      url.searchParams.set('offset', String(offset));
+      const { data } = await ml.get(url.pathname + url.search);
+      const results = Array.isArray(data?.results) ? data.results : [];
+      paging.total = Number(data?.paging?.total || results.length);
+      return results;
+    }
+
+    try {
+      ids = useSites ? await fetchFromSites() : await fetchFromUsers();
+    } catch (e) {
+      // Fallback: se sites falhar, tenta users (útil p/ casos com apenas status)
+      if (useSites) {
+        source = 'users';
+        ids = await fetchFromUsers();
+      } else {
+        throw e;
+      }
+    }
+
+    // Enriquecimento (sempre vamos precisar ao menos de status para filtrar localmente)
+    const items = ids.map(id => ({ id }));
+    const needDetails = wants.includes('details') || (source === 'sites' && status); // detalhes necessários para filtrar status
+
+    if (needDetails && ids.length) {
+      // garante que 'status' esteja nos atributos
+      let attrs = attributes ||
+        'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+      if (!attrs.split(',').includes('status')) attrs += ',status';
+
+      for (let i = 0; i < ids.length; i += 20) {
+        const chunk = ids.slice(i, i + 20);
+        const { data } = await ml.get('/items', { params: { ids: chunk.join(','), attributes: attrs } });
+        const arr = Array.isArray(data) ? data : [];
+        const got = arr.filter(x => x && x.code === 200 && x.body).map(x => x.body);
+        const map = new Map(got.map(x => [x.id, x]));
+        for (const it of items) if (map.has(it.id)) Object.assign(it, map.get(it.id));
+      }
+
+      // Se a origem foi /sites e o cliente pediu status, filtramos localmente
+      if (source === 'sites' && status) {
+        const wanted = String(status).toLowerCase();
+        for (let i = items.length - 1; i >= 0; i--) {
+          if (String(items[i]?.status || '').toLowerCase() !== wanted) items.splice(i, 1);
+        }
+        // Ajusta o total mostrado (total original vem do marketplace; aqui mostramos o total filtrado exibido)
+        paging.total = items.length;
+      }
+    }
+
+    // Sale price (context marketplace)
+    if (wants.includes('sale_price') && items.length) {
+      const MAX = 6; let idx = 0, running = 0;
+      await new Promise(resolve => {
+        const run = () => {
+          while (running < MAX && idx < items.length) {
+            const id = items[idx++].id; running++;
+            (async () => {
+              try {
+                const { data } = await ml.get(`/items/${id}/sale_price`, { params: { context: 'channel_marketplace' } });
+                const it = items.find(x => x.id === id);
+                if (it) it.sale_price = data?.price != null ? data : null;
+              } catch {}
+            })().finally(() => { running--; if (idx >= items.length && running === 0) resolve(); else run(); });
+          }
+        };
+        run();
+      });
+    }
+
+    // Ordenação local complementar
+    if (sort === 'sold_desc') {
+      items.sort((a, b) => (b.sold_quantity || 0) - (a.sold_quantity || 0));
+    } else if (source === 'users' && sort !== 'relevance') {
+      if (sort === 'price_asc') items.sort((a, b) => (a.price || 0) - (b.price || 0));
+      if (sort === 'price_desc') items.sort((a, b) => (b.price || 0) - (a.price || 0));
+      if (sort === 'last_updated_desc') items.sort((a, b) => String(b.last_updated || '').localeCompare(String(a.last_updated || '')));
+    }
+
+    return res.json({
+      ok: true,
+      source,
+      paging,
+      items,
+      available_filters,
+      filtersUsed: { q, status, category_id, free_shipping: free_shipping === 'true', sort }
+    });
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok: false, error: { code: 'ads_search_failed', message: msg } });
+  }
+});
+
+
+// PUT descrição (api_version=2) — agora com extração da posição do erro
+app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const plain_text = String(req.body?.plain_text || '');
+    if (!plain_text) return res.status(400).json({ ok: false, error: { code: 'bad_request', message: 'plain_text é obrigatório' } });
+    const params = { api_version: 2 };
+    const { data } = await ml.put(`/items/${encodeURIComponent(req.params.id)}/description`, { plain_text }, { params });
+    res.json({ ok: true, id: req.params.id, result: data || {} });
+  } catch (err) {
+    // tenta achar "plain_text[123]" dentro da mensagem do ML
+    const raw = err?.response?.data;
+    const text = typeof raw === 'string' ? raw : JSON.stringify(raw || {});
+    const match = /plain_text\[(\d+)\]/.exec(text);
+    const position = match ? Number(match[1]) : null;
+    res.status(422).json({
+      ok: false,
+      error: {
+        code: 'validation_error',
+        message: text,
+        field: position != null ? 'plain_text' : undefined,
+        position
+      }
+    });
+  }
+});
+
+
 // -------------------- PEDIDOS --------------------
 const ordersCache = {
   syncedAt: 0,
-  items: [] // { order, shipping, shipping_group, when_group, shipping_form, turbo }
+  items: [] // { order, shipping, shipping_group }
 };
 
 async function getSellerId(req) {
@@ -373,36 +691,9 @@ function mapShippingToGroup(status = '') {
   const s = String(status || '').toLowerCase();
   if (s === 'delivered') return 'delivered';
   if (s === 'ready_to_ship' || s === 'pending') return 'ready_to_ship';
-  if (s === 'in_transit' || s === 'shipped' || s === 'handling' || s === 'out_for_delivery' || s === 'soon_deliver') return 'in_transit';
+  if (s === 'in_transit' || s === 'shipped' || s === 'handling') return 'in_transit';
   return 'other';
 }
-function normalizeYMD(d) { if (!d) return null; const dt = new Date(d); return dt.toISOString().slice(0, 10); }
-function mapShippingForm(shipping = {}) {
-  const t = String(shipping?.logistic_type || shipping?.logistic?.type || '').toLowerCase();
-  if (t.includes('fulfillment')) return 'full';
-  if (t.includes('self_service') || t.includes('flex')) return 'flex';
-  if (t.includes('xd_drop_off')) return 'xd_drop_off';
-  if (t.includes('drop_off')) return 'drop_off';
-  if (t.includes('cross_docking')) return 'cross_docking';
-  return 'other';
-}
-function isTurbo(shipping = {}) {
-  const tags = Array.isArray(shipping?.tags) ? shipping.tags.map(String) : [];
-  const svc = String(shipping?.service || '').toLowerCase();
-  return tags.map(s => s.toLowerCase()).includes('turbo') || svc.includes('turbo');
-}
-function mapWhenGroup(order, shipping) {
-  const s = String(shipping?.status || order?.shipping_status || '').toLowerCase();
-  if (s === 'delivered') return 'delivered';
-  if (['in_transit','shipped','handling','out_for_delivery','soon_deliver'].includes(s)) return 'in_transit';
-  const buf = shipping?.lead_time?.buffering?.date || shipping?.estimated_handling_limit?.date;
-  const y = normalizeYMD(buf);
-  const today = new Date().toISOString().slice(0, 10);
-  if (y === today) return 'today';
-  if (y && y > today) return 'upcoming';
-  return 'other';
-}
-
 async function hydrateShipments(orders, ml) {
   const maxConcurrent = 8;
   const queue = [...orders];
@@ -420,17 +711,12 @@ async function hydrateShipments(orders, ml) {
           try {
             const shippingId = order?.shipping?.id || order?.shipping;
             if (shippingId) {
-              const { data } = await ml.get(`/shipments/${shippingId}`, { headers: { 'x-format-new': 'true' } });
+              const { data } = await ml.get(`/shipments/${shippingId}`);
               shipping = data || null;
               group = mapShippingToGroup(data?.status);
-            } else {
-              group = mapShippingToGroup(order?.shipping_status || '');
             }
           } catch {}
-          const when_group = mapWhenGroup(order, shipping);
-          const shipping_form = mapShippingForm(shipping);
-          const turbo = isTurbo(shipping);
-          out.push({ order, shipping, shipping_group: group, when_group, shipping_form, turbo });
+          out.push({ order, shipping, shipping_group: group });
         })()
           .then(() => { running--; runNext(); })
           .catch(err => { running--; reject(err); });
@@ -439,25 +725,22 @@ async function hydrateShipments(orders, ml) {
     runNext();
   });
 }
-
 function computeStats(items) {
-  const byStatus = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
-  const chips    = { today: 0, upcoming: 0, in_transit: 0, delivered: 0, other: 0 };
-  const forms    = { full: 0, flex: 0, drop_off: 0, xd_drop_off: 0, cross_docking: 0, other: 0, turbo: 0 };
-
+  const stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
   for (const it of items) {
-    if (byStatus[it.shipping_group] != null) byStatus[it.shipping_group]++; else byStatus.other++;
-    const w = it.when_group ?? mapWhenGroup(it.order, it.shipping);
-    if (chips[w] != null) chips[w]++; else chips.other++;
-    const f = it.shipping_form ?? mapShippingForm(it.shipping);
-    if (forms[f] != null) forms[f]++; else forms.other++;
-    if (it.turbo || isTurbo(it.shipping)) forms.turbo++;
+    if (stats[it.shipping_group] != null) stats[it.shipping_group]++;
+    else stats.other++;
   }
-  return { byStatus, chips, forms };
+  return stats;
 }
 
-// Helpers de DATA
-function toISOAtBoundary(d, endOfDay = false) { const dt = new Date(d); if (endOfDay) dt.setUTCHours(23,59,59,999); else dt.setUTCHours(0,0,0,0); return dt.toISOString(); }
+// Helpers de DATA (padrão último 90d; janelas de 30d)
+function toISOAtBoundary(d, endOfDay = false) {
+  const dt = new Date(d);
+  if (endOfDay) dt.setUTCHours(23, 59, 59, 999);
+  else dt.setUTCHours(0, 0, 0, 0);
+  return dt.toISOString();
+}
 function parseDateRangeFromQuery(query) {
   const now = new Date();
   const to = query.to ? new Date(query.to) : now;
@@ -475,14 +758,15 @@ function* dateWindows(from, to, windowDays = 30) {
     end = new Date(startMs - 1);
   }
 }
+// Escolhe quais filtros de data aplicar
 function dateFilterKeys(basis) {
   const b = String(basis || 'created');
   if (b === 'updated') return ['order.date_last_updated.from', 'order.date_last_updated.to'];
   if (b === 'closed')  return ['order.date_closed.from',       'order.date_closed.to'];
-  return ['order.date_created.from',     'order.date_created.to'];
+  return ['order.date_created.from',     'order.date_created.to']; // default
 }
 
-// Sync (batch via /orders/search → enrich /shipments)
+// Sincroniza por janelas de data (clássico)
 app.post('/api/orders/sync', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
@@ -538,35 +822,18 @@ app.post('/api/orders/sync', ensureAccessToken, async (req, res) => {
 
 // Estatísticas
 app.get('/api/orders/stats', ensureAccessToken, (req, res) => {
-  const s = computeStats(ordersCache.items);
-  res.json({
-    total: ordersCache.items.length,
-    stats: s.byStatus,
-    chips: s.chips,
-    forms: s.forms,
-    syncedAt: ordersCache.syncedAt
-  });
+  const stats = computeStats(ordersCache.items);
+  res.json({ total: ordersCache.items.length, stats, syncedAt: ordersCache.syncedAt });
 });
 
 // Paginação
 app.get('/api/orders/page', ensureAccessToken, (req, res) => {
   const page = Number(req.query.page || 1);
   const pageSize = Math.min(Number(req.query.pageSize || 20), 100);
-  const group = String(req.query.group || 'all'); // all | today | upcoming | in_transit | delivered | ready_to_ship
-  const form  = String(req.query.form  || 'all'); // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
+  const group = String(req.query.group || 'all');
 
   let arr = ordersCache.items;
-
-  if (group === 'today' || group === 'upcoming') {
-    arr = arr.filter(o => (o.when_group ?? mapWhenGroup(o.order, o.shipping)) === group);
-  } else if (group !== 'all') {
-    arr = arr.filter(o => o.shipping_group === group);
-  }
-
-  if (form !== 'all') {
-    if (form === 'turbo') arr = arr.filter(o => o.turbo || isTurbo(o.shipping));
-    else arr = arr.filter(o => (o.shipping_form ?? mapShippingForm(o.shipping)) === form);
-  }
+  if (group !== 'all') arr = arr.filter(o => o.shipping_group === group);
 
   arr = [...arr].sort((a, b) => {
     const ad = a.order.date_closed || a.order.date_created || '';
@@ -577,16 +844,25 @@ app.get('/api/orders/page', ensureAccessToken, (req, res) => {
   const start = (page - 1) * pageSize;
   const slice = arr.slice(start, start + pageSize);
 
-  res.json({ page, pageSize, total: arr.length, pages: Math.max(1, Math.ceil(arr.length / pageSize)), data: slice });
+  res.json({
+    page,
+    pageSize,
+    total: arr.length,
+    pages: Math.max(1, Math.ceil(arr.length / pageSize)),
+    data: slice
+  });
 });
 
-// STREAM SSE — com clamp automático para 'delivered'
+// PEDIDOS: STREAM SSE
 app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
 
-  const send = (event, data) => { res.write(`event: ${event}\n`); res.write(`data: ${JSON.stringify(data)}\n\n`); };
+  const send = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
   const ping = setInterval(() => { try { res.write(':\n\n'); } catch {} }, 25000);
 
   let closed = false;
@@ -595,40 +871,21 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
     const sellerId = await getSellerId(req);
-
-    const group = String(req.query.group || '').toLowerCase();
-
-    // Base de datas/basis
-    let { from, to } = parseDateRangeFromQuery(req.query);
-    let basis = String(req.query.basis || 'created');
-
-    // Clamp implícito para FINALIZADAS (3 meses por date_closed)
-    if (group === 'delivered' && !req.query.from && !req.query.to) {
-      to = new Date();
-      from = new Date(to.getTime() - 90 * 24 * 60 * 60 * 1000); // 3 meses
-      basis = 'closed';
-    }
-
+    const { from, to } = parseDateRangeFromQuery(req.query);
+    const windowDays = Number(req.query.windowDays || 30);
+    const basis = String(req.query.basis || 'created');
     const [fromKey, toKey] = dateFilterKeys(basis);
     const limit = 50;
 
     ordersCache.items = [];
     ordersCache.syncedAt = Date.now();
-<<<<<<< HEAD
-=======
     const stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
 
     let sent = 0;
     let expectedTotal = 0;
     const seen = new Set();
 
-<<<<<<< HEAD
-    send('meta', { range: { from: from.toISOString(), to: to.toISOString() }, basis, expectedTotal });
-=======
-    // meta inicial
-    send('meta', { range: { from: from.toISOString(), to: to.toISOString(), windowDays }, expectedTotal, total: expectedTotal, basis });
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
+    send('meta', { range: { from: from.toISOString(), to: to.toISOString(), windowDays }, expectedTotal, basis });
 
     async function streamEnriched(chunk) {
       const maxConcurrent = 6;
@@ -650,17 +907,6 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
                 seen.add(key);
 
                 let shipping = null;
-<<<<<<< HEAD
-                let groupClassic = 'other';
-                try {
-                  const shippingId = order?.shipping?.id || order?.shipping;
-                  if (shippingId) {
-                    const { data } = await ml.get(`/shipments/${shippingId}`, { headers: { 'x-format-new': 'true' } });
-                    shipping = data || null;
-                    groupClassic = mapShippingToGroup(data?.status);
-                  } else {
-                    groupClassic = mapShippingToGroup(order?.shipping_status || '');
-=======
                 let group = 'other';
                 try {
                   const shippingId = order?.shipping?.id || order?.shipping;
@@ -670,33 +916,20 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
                     group = mapShippingToGroup(data?.status);
                   } else {
                     group = mapShippingToGroup(order?.shipping_status || '');
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
                   }
                 } catch {}
 
-                const when_group = mapWhenGroup(order, shipping);
-                const shipping_form = mapShippingForm(shipping);
-                const turbo = isTurbo(shipping);
-
-<<<<<<< HEAD
-                const enriched = { order, shipping, shipping_group: groupClassic, when_group, shipping_form, turbo };
-                ordersCache.items.push(enriched);
-
-                sent++;
-                send('row', enriched);
-                if (expectedTotal > 0 || sent % 25 === 0) send('progress', { sent, expectedTotal });
-=======
-                const enriched = { order, shipping, shipping_group: group, when_group, shipping_form, turbo };
+                const enriched = { order, shipping, shipping_group: group };
                 ordersCache.items.push(enriched);
                 if (stats[group] != null) stats[group]++; else stats.other++;
 
                 sent++;
                 send('row', enriched);
-                const progressPayload = expectedTotal > 0
-                  ? { sent, expectedTotal, total: expectedTotal, stats }
-                  : { sent, expectedTotal: 0, total: 0, stats };
-                if (expectedTotal > 0 || sent % 25 === 0) send('progress', progressPayload);
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
+                if (expectedTotal > 0) {
+                  send('progress', { sent, expectedTotal, stats });
+                } else if (sent % 25 === 0) {
+                  send('progress', { sent, expectedTotal: 0, stats });
+                }
               } finally { running--; }
             })().then(runNext).catch(() => { running--; runNext(); });
           }
@@ -705,11 +938,7 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
-    for (const win of dateWindows(from, to, 30)) {
-=======
     for (const win of dateWindows(from, to, windowDays)) {
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
       if (closed) break;
 
       let offset = 0;
@@ -721,13 +950,8 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
         url.searchParams.set('sort', 'date_desc');
         url.searchParams.set('limit', String(limit));
         url.searchParams.set('offset', String(offset));
-<<<<<<< HEAD
-        url.searchParams.set(fromKey, toISOAtBoundary(win.fromISO || win.from, false));
-        url.searchParams.set(toKey,   toISOAtBoundary(win.toISO || win.to, true));
-=======
         url.searchParams.set(fromKey, win.fromISO);
         url.searchParams.set(toKey,   win.toISO);
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
 
         let data;
         try {
@@ -742,11 +966,7 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
         if (firstPage) {
           const totalWin = Number(data?.paging?.total || 0);
           expectedTotal += totalWin;
-<<<<<<< HEAD
           send('meta', { window: win, windowTotal: totalWin, expectedTotal });
-=======
-          send('meta', { window: win, windowTotal: totalWin, expectedTotal, total: expectedTotal });
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
           firstPage = false;
         }
 
@@ -756,20 +976,12 @@ app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
 
         if (results.length < limit) break;
         offset += limit;
-<<<<<<< HEAD
-        if (offset >= 10000) break; // guarda
-=======
-        if (offset >= 10000) break; // guarda de segurança
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
+        if (offset >= 10000) break;
       }
     }
 
     ordersCache.syncedAt = Date.now();
-<<<<<<< HEAD
-    send('done', { sent, expectedTotal, syncedAt: ordersCache.syncedAt, basis, group });
-=======
-    send('done', { sent, expectedTotal, total: expectedTotal, stats, syncedAt: ordersCache.syncedAt, basis });
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
+    send('done', { sent, expectedTotal, stats, syncedAt: ordersCache.syncedAt, basis });
   } catch (err) {
     send('error', { scope: 'fatal', message: String(err?.message || err) });
   }
@@ -792,11 +1004,7 @@ app.post('/refresh', async (req, res) => {
     if (!rt) return res.status(400).send('Sem refresh_token na sessão');
     const token = await refreshAccessToken(rt);
     req.session.access_token = token.access_token;
-<<<<<<< HEAD
     req.session.refresh_token = token.refresh_token;
-=======
-  	req.session.refresh_token = token.refresh_token;
->>>>>>> 32722e6 (Correção de bug na sincronização de pedidos)
     req.session.expires_at = Date.now() + token.expires_in * 1000 - 60 * 1000;
     return res.json({ ok: true, expires_in: token.expires_in });
   } catch (err) {
