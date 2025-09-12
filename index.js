@@ -80,6 +80,26 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
+// depois dos seus middlewares e do ensureAccessToken
+app.get("/api/items/:id/description", ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
+    res.json(data || {}); // retorna { text, plain_text, ... } da API
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok: false, error: { code: "description_fetch_failed", message: msg } });
+  }
+});
+app.get("/diag/ml", ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get("/users/me");
+    res.json({ ok: true, me: { id: data.id, nickname: data.nickname } });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
 // Upload local para repassar ao ML
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
