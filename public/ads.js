@@ -104,7 +104,17 @@
     const updated = fmtDate(it.last_updated);
     const link = it.permalink ? `<a class="btn" href="${it.permalink}" target="_blank" rel="noopener">Abrir</a>` : '';
 
+    const thumb = it.thumbnail
+      ? `<img src="${it.thumbnail}" alt="" style="width:60px;height:60px;object-fit:cover;" />`
+      : '';
+    const varThumbs = Array.isArray(it.variations)
+      ? it.variations.map(v => v.thumbnail
+          ? `<img src="${v.thumbnail}" alt="" style="width:28px;height:28px;object-fit:cover;margin-top:4px;" />`
+          : '').join('')
+      : '';
+
     return `<tr>
+      <td>${thumb}${varThumbs ? `<div style="display:flex;gap:2px;flex-wrap:wrap;">${varThumbs}</div>` : ''}</td>
       <td>
         <button class="link open-desc" data-id="${it.id}" title="Ver/editar descrição">${escapeHtml(title)}</button>
         <div class="muted" style="font-size:.8rem">${it.id}</div>
@@ -127,7 +137,7 @@
     $('#adsNextBtn').disabled = page >= pages;
     $('#adsTbody').innerHTML = items.length
       ? items.map(renderRow).join('')
-      : `<tr><td colspan="7" class="muted">Nenhum dado para exibir.</td></tr>`;
+      : `<tr><td colspan="8" class="muted">Nenhum dado para exibir.</td></tr>`;
   }
 
   // ===== Busca =====
@@ -165,7 +175,7 @@
       progressFinish(`Encontrados ${state.search.total}`);
     } catch (e) {
       console.error(e);
-      $('#adsTbody').innerHTML = `<tr><td colspan="7" class="muted">Erro ao buscar anúncios.</td></tr>`;
+      $('#adsTbody').innerHTML = `<tr><td colspan="8" class="muted">Erro ao buscar anúncios.</td></tr>`;
       progressError('Erro na busca');
     }
   }
@@ -318,7 +328,7 @@
       progressFinish('Concluído');
     } catch (e) {
       console.error(e);
-      $('#adsTbody').innerHTML = `<tr><td colspan="7" class="muted">Erro ao sincronizar.</td></tr>`;
+      $('#adsTbody').innerHTML = `<tr><td colspan="8" class="muted">Erro ao sincronizar.</td></tr>`;
       progressError('Erro');
     } finally {
       $('#adsStreamBtn').disabled = false;

@@ -426,9 +426,19 @@ async function fetchItemDetails(ml, ids, attributes) {
 app.get('/api/items/all', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
-    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,variations,pictures,status,last_updated';
     const ids = await collectAllItemIds(req, ml);
     const items = await fetchItemDetails(ml, ids, attributes);
+    for (const it of items) {
+      if (Array.isArray(it?.variations) && Array.isArray(it?.pictures)) {
+        const picMap = new Map(it.pictures.map(p => [p.id, p.secure_url || p.url || null]));
+        for (const v of it.variations) {
+          const picId = Array.isArray(v.picture_ids) ? v.picture_ids[0] : null;
+          v.thumbnail = picId ? (picMap.get(picId) || null) : null;
+        }
+        delete it.pictures;
+      }
+    }
     res.json({ total: items.length, attributes, items });
   } catch (err) {
     res.status(500).send(`Erro em /api/items/all: ${fmtErr(err)}`);
@@ -447,7 +457,7 @@ app.get('/api/items/all/stream', ensureAccessToken, async (req, res) => {
     let closed = false;
     req.on('close', () => { closed = true; clearInterval(ping); });
 
-    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,variations,pictures,status,last_updated';
 
     const ids = await collectAllItemIds(req, ml);
     if (closed) return;
@@ -463,6 +473,16 @@ app.get('/api/items/all/stream', ensureAccessToken, async (req, res) => {
         const { data } = await ml.get(url, { params: { ids: slice.join(','), attributes } });
         const arr = Array.isArray(data) ? data : [];
         const batch = arr.filter(x => x && x.code === 200 && x.body).map(x => x.body);
+        for (const it of batch) {
+          if (Array.isArray(it?.variations) && Array.isArray(it?.pictures)) {
+            const picMap = new Map(it.pictures.map(p => [p.id, p.secure_url || p.url || null]));
+            for (const v of it.variations) {
+              const picId = Array.isArray(v.picture_ids) ? v.picture_ids[0] : null;
+              v.thumbnail = picId ? (picMap.get(picId) || null) : null;
+            }
+            delete it.pictures;
+          }
+        }
         sent += batch.length;
         res.write(`event: batch\ndata: ${JSON.stringify({ count: batch.length, items: batch })}\n\n`);
         res.write(`event: progress\ndata: ${JSON.stringify({ sent, total: ids.length })}\n\n`);
@@ -562,7 +582,7 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     if (needDetails && ids.length) {
       // garante que 'status' esteja nos atributos
       let attrs = attributes ||
-        'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+        'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,variations,pictures,status,last_updated';
       if (!attrs.split(',').includes('status')) attrs += ',status';
 
       for (let i = 0; i < ids.length; i += 20) {
@@ -572,6 +592,18 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
         const got = arr.filter(x => x && x.code === 200 && x.body).map(x => x.body);
         const map = new Map(got.map(x => [x.id, x]));
         for (const it of items) if (map.has(it.id)) Object.assign(it, map.get(it.id));
+      }
+
+      // Mapeia thumbnails das variações a partir das pictures
+      for (const it of items) {
+        if (Array.isArray(it?.variations) && Array.isArray(it?.pictures)) {
+          const picMap = new Map(it.pictures.map(p => [p.id, p.secure_url || p.url || null]));
+          for (const v of it.variations) {
+            const picId = Array.isArray(v.picture_ids) ? v.picture_ids[0] : null;
+            v.thumbnail = picId ? (picMap.get(picId) || null) : null;
+          }
+          delete it.pictures;
+        }
       }
 
       // Se a origem foi /sites e o cliente pediu status, filtramos localmente
