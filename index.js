@@ -11,9 +11,9 @@ import fs from 'fs/promises';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
-import FormData from 'form-data';
 import { fileURLToPath } from 'url';
 import { createMLClient } from './lib/mlClient.js';
+import { createPostSaleMessages } from './lib/postSaleMessages.js';
 
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -297,8 +297,9 @@ function mlFor(req) {
 app.get('/api/messages/unread', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
+    const messages = createPostSaleMessages(ml, SITE_ID);
     const role = (req.query.role || 'seller').toLowerCase();
-    const { data } = await ml.get('/messages/unread', { params: { role, tag: 'post_sale', site_id: SITE_ID } });
+    const data = await messages.unread(role);
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro em /api/messages/unread: ${fmtErr(err)}`);
@@ -308,15 +309,14 @@ app.get('/api/messages/unread', ensureAccessToken, async (req, res) => {
 app.get('/api/messages/packs/:packId', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
+    const messages = createPostSaleMessages(ml, SITE_ID);
     const { packId } = req.params;
     const mark = String(req.query.mark_as_read || 'true').toLowerCase() === 'true';
     const limit = req.query.limit || 10;
     const offset = req.query.offset || 0;
     const sellerId = req.session.user_id || req.query.seller_id;
     if (!sellerId) return res.status(400).send('seller_id ausente');
-
-    const url = `/messages/packs/${encodeURIComponent(packId)}/sellers/${encodeURIComponent(sellerId)}`;
-    const { data } = await ml.get(url, { params: { tag: 'post_sale', mark_as_read: mark, limit, offset, site_id: SITE_ID } });
+    const data = await messages.pack(packId, sellerId, { mark_as_read: mark, limit, offset });
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro em /api/messages/packs/:packId: ${fmtErr(err)}`);
@@ -326,6 +326,7 @@ app.get('/api/messages/packs/:packId', ensureAccessToken, async (req, res) => {
 app.post('/api/messages/packs/:packId/send', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
+    const messages = createPostSaleMessages(ml, SITE_ID);
     const { packId } = req.params;
     const sellerId = req.session.user_id;
     const { to_user_id, text, attachments } = req.body || {};
@@ -333,12 +334,7 @@ app.post('/api/messages/packs/:packId/send', ensureAccessToken, async (req, res)
     if (!to_user_id) return res.status(400).send("Campo 'to_user_id' é obrigatório");
     if (!text) return res.status(400).send("Campo 'text' é obrigatório");
     if (text.length > 350) return res.status(400).send('Texto excede 350 caracteres');
-
-    const url = `/messages/packs/${encodeURIComponent(packId)}/sellers/${encodeURIComponent(sellerId)}`;
-    const payload = { from: { user_id: String(sellerId) }, to: { user_id: String(to_user_id) }, text: String(text) };
-    if (attachments && Array.isArray(attachments) && attachments.length) payload.attachments = attachments;
-
-    const { data } = await ml.post(url, payload, { params: { tag: 'post_sale', site_id: SITE_ID }, idempotent: false });
+    const data = await messages.send(packId, sellerId, to_user_id, text, attachments);
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro ao enviar mensagem: ${fmtErr(err)}`);
@@ -348,16 +344,9 @@ app.post('/api/messages/packs/:packId/send', ensureAccessToken, async (req, res)
 app.post('/api/messages/attachments', ensureAccessToken, upload.single('file'), async (req, res) => {
   try {
     const ml = mlFor(req);
+    const messages = createPostSaleMessages(ml, SITE_ID);
     if (!req.file) return res.status(400).send('Arquivo não enviado (campo "file")');
-    const form = new FormData();
-    form.append('file', req.file.buffer, { filename: req.file.originalname });
-
-    const { data } = await ml.post('/messages/attachments', form, {
-      params: { tag: 'post_sale', site_id: SITE_ID },
-      headers: form.getHeaders(),
-      maxBodyLength: Infinity,
-      idempotent: false
-    });
+    const data = await messages.uploadAttachment(req.file);
     res.json(data);
   } catch (err) {
     res.status(500).send(`Erro no upload de anexo: ${fmtErr(err)}`);
@@ -367,11 +356,9 @@ app.post('/api/messages/attachments', ensureAccessToken, upload.single('file'), 
 app.get('/api/messages/attachments/:attachmentId', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
+    const messages = createPostSaleMessages(ml, SITE_ID);
     const { attachmentId } = req.params;
-    const resp = await ml.get(`/messages/attachments/${encodeURIComponent(attachmentId)}`, {
-      params: { tag: 'post_sale', site_id: SITE_ID },
-      responseType: 'arraybuffer'
-    });
+    const resp = await messages.getAttachment(attachmentId);
     res.setHeader('Content-Type', resp.headers['content-type'] || 'application/octet-stream');
     res.send(resp.data);
   } catch (err) {
