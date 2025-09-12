@@ -640,13 +640,26 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     res.status(500).json({ ok: false, error: { code: 'ads_search_failed', message: msg } });
   }
 });
-
+// GET descrição (api_version=2)
+app.get('/api/items/:id/description', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
+    // a API pode devolver { text, plain_text, ... }
+    res.json(data || {});
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok:false, error:{ code:'description_fetch_failed', message: msg } });
+  }
+});
 
 // PUT descrição (api_version=2) — agora com extração da posição do erro
 app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
-    const plain_text = String(req.body?.plain_text || '');
+    const plain_text = String(
+      req.body?.plain_text ?? req.body?.text ?? ''
+    );
     if (!plain_text) return res.status(400).json({ ok: false, error: { code: 'bad_request', message: 'plain_text é obrigatório' } });
     const params = { api_version: 2 };
     const { data } = await ml.put(`/items/${encodeURIComponent(req.params.id)}/description`, { plain_text }, { params });
