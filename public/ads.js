@@ -261,7 +261,7 @@ async function saveDescription() {
   const textarea = $('#descText');
   if (!itemId || !panel || !textarea) return;
 
-  const body = { text: String(textarea.value || '') };
+  const body = { plain_text: String(textarea.value || '') };
 
   progressStart('Salvando descrição…', 25);
   try {
