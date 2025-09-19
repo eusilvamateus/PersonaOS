@@ -2,108 +2,96 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <title>Pedidos — Mercado Livre</title>
+  <title>Pedidos | Mercado Livre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="/layout.css" rel="stylesheet" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <a href="/" style="display: flex; align-items: center; gap: 8px; color: var(--muted);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <a href="/" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         Voltar
       </a>
-      <h1 style="margin: 0; font-size: 20px; font-weight: 600;">Pedidos</h1>
+      <h1 style="margin:0;">Pedidos</h1>
     </div>
-    <div class="actions">
-      <span id="syncedAt" class="muted">Ainda não sincronizado</span>
-      <button id="cancelBtn" class="btn" style="display:none;">Cancelar</button>
-      <button id="syncBtn" class="btn primary">Sincronizar Pedidos</button>
+
+    <div class="top-actions">
+      <span id="top-actions-unauthed">
+        <button class="btn primary" id="loginBtn">Entrar</button>
+      </span>
+      <span id="top-actions-authed" hidden>
+        <button class="btn" id="refreshBtn">Renovar token</button>
+        <form method="post" action="/logout" style="display:inline;">
+          <button class="btn" type="submit">Sair</button>
+        </form>
+      </span>
     </div>
   </header>
 
   <main class="container">
     <section class="panel">
       <div class="panel-header">
-        <!-- Chips de agrupamento (topo) -->
-        <div id="chips" style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button data-group="today" class="chip active">Envios de hoje <span id="count-today" class="badge">0</span></button>
-          <button data-group="upcoming" class="chip">Próximos dias <span id="count-upcoming" class="badge">0</span></button>
-          <button data-group="in_transit" class="chip">Em trânsito <span id="count-in_transit" class="badge">0</span></button>
-          <button data-group="delivered" class="chip">Finalizadas <span id="count-delivered" class="badge">0</span></button>
+        <div id="chips" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button data-group="all" class="chip active">Todos <span id="count-all" class="badge">0</span></button>
+          <button data-group="delivered" class="chip">Entregues <span id="count-delivered" class="badge">0</span></button>
+          <button data-group="in_transit" class="chip">A caminho <span id="count-in_transit" class="badge">0</span></button>
+          <button data-group="ready_to_ship" class="chip">Pronto para enviar <span id="count-ready_to_ship" class="badge">0</span></button>
+          <button data-group="other" class="chip">Outros <span id="count-other" class="badge">0</span></button>
         </div>
 
-        <!-- Chips por forma de envio -->
-        <div id="forms" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-          <button data-form="all" class="chip active">Todas as formas</button>
-          <button data-form="flex" class="chip">Flex <span id="count-flex" class="badge">0</span></button>
-          <button data-form="full" class="chip">Full <span id="count-full" class="badge">0</span></button>
-          <button data-form="drop_off" class="chip">Drop-off <span id="count-drop_off" class="badge">0</span></button>
-          <button data-form="xd_drop_off" class="chip">Coletas/Places <span id="count-xd_drop_off" class="badge">0</span></button>
-          <button data-form="cross_docking" class="chip">Cross-docking <span id="count-cross_docking" class="badge">0</span></button>
-          <button data-form="turbo" class="chip">Turbo <span id="count-turbo" class="badge">0</span></button>
-        </div>
-
-        <!-- Ferramentas (período e paginação por página) -->
-        <div class="tools" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div class="tools" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <label class="muted" for="periodSelect">Período:</label>
-          <select id="periodSelect" class="input" style="width: auto;">
+          <select id="periodSelect" class="input" style="width:auto;">
             <option value="24h">Últimas 24 horas</option>
             <option value="7d" selected>Últimos 7 dias</option>
             <option value="1m">Último mês</option>
             <option value="6m">Últimos 6 meses</option>
-            <option value="1y">Último ano</option>
-            <option value="custom">Data personalizada</option>
+            <option value="custom">Data personalizada…</option>
           </select>
 
-          <span id="customDates" style="display:none; gap:8px; align-items:center">
-            <input type="date" id="fromDate" class="input" style="width: auto;" />
-            <span class="muted">a</span>
-            <input type="date" id="toDate" class="input" style="width: auto;" />
-          </span>
-          
-          <label class="muted" for="pageSize" style="margin-left:16px">Itens por página:</label>
-          <select id="pageSize" class="input" style="width: auto;">
-            <option value="20">20</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-          </select>
+          <input id="fromDate" class="input" type="date" style="display:none" aria-label="Data inicial" />
+          <span class="muted">até</span>
+          <input id="toDate" class="input" type="date" style="display:none" aria-label="Data final" />
+
+          <button id="syncBtn" class="btn">Sincronizar por Stream</button>
+          <button id="cancelBtn" class="btn danger" style="display:none">Cancelar</button>
+
+          <div style="flex:1;"></div>
+
+          <button id="prevBtn" class="btn" aria-label="Página anterior">◀</button>
+          <span id="pageLabel" class="muted">Página 1</span>
+          <button id="nextBtn" class="btn" aria-label="Próxima página">▶</button>
         </div>
       </div>
 
-      <div id="progress" class="progress-wrap" hidden>
+      <div id="progress" class="progress-wrap" hidden role="status" aria-live="polite" aria-atomic="true" aria-label="Progresso de sincronização de pedidos">
         <div class="progress">
-          <div class="bar-bg"><div id="progressBar" class="bar"></div></div>
+          <div class="bar-bg"><div id="progressBar" class="bar" style="width:0%"></div></div>
           <span id="progressLabel">Sincronizando pedidos…</span>
         </div>
       </div>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Data</th>
-              <th>Comprador</th>
-              <th>Itens</th>
-              <th>Total</th>
-              <th>Status</th>
-              <th>Envio</th>
-              <th>Shipping ID</th>
-              <th>Pack ID</th>
-            </tr>
-          </thead>
-          <tbody id="tbody">
-            <tr><td colspan="9" class="muted" style="text-align: center; padding: 48px;">Sem pedidos para exibir.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="panel-footer">
-        <div class="pager" style="display: flex; gap: 12px; align-items: center;">
-          <button id="prevBtn" class="btn">‹ Anterior</button>
-          <span id="pageInfo" class="muted" style="font-weight: 500;">Página 1 de 1</span>
-          <button id="nextBtn" class="btn">Próxima ›</button>
+      <div class="panel-body">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Pedido</th>
+                <th>Comprador</th>
+                <th>Itens</th>
+                <th>Total</th>
+                <th>Pagamento</th>
+                <th>Status</th>
+                <th>Envio</th>
+                <th>Pack</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <tr><td colspan="9" class="muted">Carregando…</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

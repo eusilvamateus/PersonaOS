@@ -2,7 +2,7 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <title>Mercado Livre — Integração</title>
+  <title>Mercado Livre | Integração</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="/layout.css" rel="stylesheet" />
   <link href="/styles.css" rel="stylesheet" />
@@ -16,9 +16,8 @@
         <div class="muted">Mensagens &amp; Anúncios</div>
       </div>
     </div>
-    <div class="actions">
-      <a class="btn" href="/ads">📈 Anúncios</a>
-      <a class="btn" href="/orders">🧾 Pedidos</a>
+
+    <div class="top-actions">
       <span id="top-actions-unauthed">
         <button class="btn primary" id="loginBtn">Entrar</button>
       </span>
@@ -39,7 +38,7 @@
         <a href="#sec-send">✉️ Enviar Mensagem</a>
         <a href="#sec-attach">📎 Anexos</a>
         <a href="/ads">📈 Anúncios</a>
-        <a href="/orders">🧾 Pedidos</a>
+        <a href="/orders">🧾 Pedidos</a>  
       </nav>
       <div id="userChip" class="chip-status"><span class="dot warn"></span> não autenticado</div>
     </aside>
@@ -47,11 +46,11 @@
     <main class="content">
       <section class="panel" id="sec-auth">
         <div class="panel-header"><h2>Autenticação &amp; Status</h2></div>
-        <div id="auth-success-message" class="auth-status-banner" hidden></div>
+        <div id="auth-success-message" class="auth-status-banner" hidden role="status" aria-live="polite" aria-atomic="true"></div>
         <div class="panel-body grid">
           <div class="col-6 field">
             <label>Resposta da API (JSON)</label>
-            <pre class="json" id="statusOut">{ carregando... }</pre>
+            <pre class="json" id="statusOut" role="status" aria-live="polite" aria-atomic="true">{ carregando... }</pre>
           </div>
           <div class="col-6 field">
             <label>Ações</label>

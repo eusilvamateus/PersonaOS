@@ -80,6 +80,26 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
+// depois dos seus middlewares e do ensureAccessToken
+app.get("/api/items/:id/description", ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
+    res.json(data || {}); // retorna { text, plain_text, ... } da API
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok: false, error: { code: "description_fetch_failed", message: msg } });
+  }
+});
+app.get("/diag/ml", ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get("/users/me");
+    res.json({ ok: true, me: { id: data.id, nickname: data.nickname } });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
 // Upload local para repassar ao ML
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
@@ -640,13 +660,26 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     res.status(500).json({ ok: false, error: { code: 'ads_search_failed', message: msg } });
   }
 });
-
+// GET descrição (api_version=2)
+app.get('/api/items/:id/description', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
+    // a API pode devolver { text, plain_text, ... }
+    res.json(data || {});
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok:false, error:{ code:'description_fetch_failed', message: msg } });
+  }
+});
 
 // PUT descrição (api_version=2) — agora com extração da posição do erro
 app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
-    const plain_text = String(req.body?.plain_text || '');
+    const plain_text = String(
+      req.body?.plain_text ?? req.body?.text ?? ''
+    );
     if (!plain_text) return res.status(400).json({ ok: false, error: { code: 'bad_request', message: 'plain_text é obrigatório' } });
     const params = { api_version: 2 };
     const { data } = await ml.put(`/items/${encodeURIComponent(req.params.id)}/description`, { plain_text }, { params });
@@ -690,45 +723,6 @@ function mapShippingToGroup(status = '') {
   if (s === 'in_transit' || s === 'shipped' || s === 'handling') return 'in_transit';
   return 'other';
 }
-function normalizeYMD(d) {
-  if (!d) return null;
-  const dt = new Date(d);
-  return dt.toISOString().slice(0, 10);
-}
-
-function mapShippingForm(shipping = {}) {
-  const t =
-    String(shipping?.logistic_type || shipping?.logistic?.type || '')
-      .toLowerCase();
-  if (t.includes('fulfillment')) return 'full';
-  if (t.includes('self_service') || t.includes('flex')) return 'flex';
-  if (t.includes('xd_drop_off')) return 'xd_drop_off';
-  if (t.includes('drop_off')) return 'drop_off';
-  if (t.includes('cross_docking')) return 'cross_docking';
-  return 'other';
-}
-function isTurbo(shipping = {}) {
-  const tags = Array.isArray(shipping?.tags) ? shipping.tags.map(String) : [];
-  const svc = String(shipping?.service || '').toLowerCase();
-  return tags.map(s => s.toLowerCase()).includes('turbo') || svc.includes('turbo');
-}
-
-/** Agrupa para os chips do topo */
-function mapWhenGroup(order, shipping) {
-  const s = String(shipping?.status || order?.shipping_status || '').toLowerCase();
-  if (s === 'delivered') return 'delivered';
-  if (['in_transit', 'shipped', 'handling', 'out_for_delivery', 'soon_deliver'].includes(s)) {
-    return 'in_transit';
-  }
-  // “Hoje/Próximos dias”: usa lead_time.buffering.date (fallback em estimated_handling_limit.date)
-  const buf = shipping?.lead_time?.buffering?.date || shipping?.estimated_handling_limit?.date;
-  const y = normalizeYMD(buf);
-  const today = new Date().toISOString().slice(0, 10);
-  if (y === today) return 'today';
-  if (y && y > today) return 'upcoming';
-  return 'other';
-}
-
 async function hydrateShipments(orders, ml) {
   const maxConcurrent = 8;
   const queue = [...orders];
@@ -749,14 +743,9 @@ async function hydrateShipments(orders, ml) {
               const { data } = await ml.get(`/shipments/${shippingId}`);
               shipping = data || null;
               group = mapShippingToGroup(data?.status);
-            } else {
-              group = mapShippingToGroup(order?.shipping_status || '');
             }
           } catch {}
-          const when_group = mapWhenGroup(order, shipping);
-          const shipping_form = mapShippingForm(shipping);
-          const turbo = isTurbo(shipping);
-          out.push({ order, shipping, shipping_group: group, when_group, shipping_form, turbo });
+          out.push({ order, shipping, shipping_group: group });
         })()
           .then(() => { running--; runNext(); })
           .catch(err => { running--; reject(err); });
@@ -766,24 +755,12 @@ async function hydrateShipments(orders, ml) {
   });
 }
 function computeStats(items) {
-  const byStatus = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
-  const chips =     { today: 0, upcoming: 0, in_transit: 0, delivered: 0, other: 0 };
-  const forms =     { full: 0, flex: 0, drop_off: 0, xd_drop_off: 0, cross_docking: 0, other: 0, turbo: 0 };
-
+  const stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
   for (const it of items) {
-    // status clássico (compatibilidade)
-    if (byStatus[it.shipping_group] != null) byStatus[it.shipping_group]++; else byStatus.other++;
-
-    // chips topo (hoje/próximos/em trânsito/finalizadas)
-    const w = it.when_group ?? mapWhenGroup(it.order, it.shipping);
-    if (chips[w] != null) chips[w]++; else chips.other++;
-
-    // formas de envio
-    const f = it.shipping_form ?? mapShippingForm(it.shipping);
-    if (forms[f] != null) forms[f]++; else forms.other++;
-    if (it.turbo || isTurbo(it.shipping)) forms.turbo++;
+    if (stats[it.shipping_group] != null) stats[it.shipping_group]++;
+    else stats.other++;
   }
-  return { byStatus, chips, forms };
+  return stats;
 }
 
 // Helpers de DATA (padrão último 90d; janelas de 30d)
@@ -874,37 +851,18 @@ app.post('/api/orders/sync', ensureAccessToken, async (req, res) => {
 
 // Estatísticas
 app.get('/api/orders/stats', ensureAccessToken, (req, res) => {
-  const s = computeStats(ordersCache.items);
-  res.json({
-    total: ordersCache.items.length,
-    stats: s.byStatus,   // compatibilidade (in_transit/ready_to_ship/delivered)
-    chips: s.chips,      // novo (today/upcoming/in_transit/delivered)
-    forms: s.forms,      // novo (full/flex/drop_off/xd_drop_off/cross_docking/turbo)
-    syncedAt: ordersCache.syncedAt
-  });
+  const stats = computeStats(ordersCache.items);
+  res.json({ total: ordersCache.items.length, stats, syncedAt: ordersCache.syncedAt });
 });
 
 // Paginação
 app.get('/api/orders/page', ensureAccessToken, (req, res) => {
   const page = Number(req.query.page || 1);
   const pageSize = Math.min(Number(req.query.pageSize || 20), 100);
-  const group = String(req.query.group || 'all'); // all | today | upcoming | in_transit | delivered | ready_to_ship
-  const form  = String(req.query.form  || 'all'); // all | full | flex | drop_off | xd_drop_off | cross_docking | turbo
+  const group = String(req.query.group || 'all');
 
   let arr = ordersCache.items;
-
-  // filtro por chip do topo
-  if (group === 'today' || group === 'upcoming') {
-    arr = arr.filter(o => (o.when_group ?? mapWhenGroup(o.order, o.shipping)) === group);
-  } else if (group !== 'all') {
-    arr = arr.filter(o => o.shipping_group === group);
-  }
-
-  // filtro por forma de envio
-  if (form !== 'all') {
-    if (form === 'turbo') arr = arr.filter(o => o.turbo || isTurbo(o.shipping));
-    else arr = arr.filter(o => (o.shipping_form ?? mapShippingForm(o.shipping)) === form);
-  }
+  if (group !== 'all') arr = arr.filter(o => o.shipping_group === group);
 
   arr = [...arr].sort((a, b) => {
     const ad = a.order.date_closed || a.order.date_created || '';
@@ -915,96 +873,16 @@ app.get('/api/orders/page', ensureAccessToken, (req, res) => {
   const start = (page - 1) * pageSize;
   const slice = arr.slice(start, start + pageSize);
 
-  res.json({ page, pageSize, total: arr.length, pages: Math.max(1, Math.ceil(arr.length / pageSize)), data: slice });
+  res.json({
+    page,
+    pageSize,
+    total: arr.length,
+    pages: Math.max(1, Math.ceil(arr.length / pageSize)),
+    data: slice
+  });
 });
 
 // PEDIDOS: STREAM SSE
-// GET /api/orders/stream — stream seguro por intervalo de datas
-app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
-  try {
-    const ml = mlFor(req);
-    const sellerId = await getSellerId(req);
-
-    const { from, to } = parseDateRangeFromQuery(req.query);   // usa helpers existentes
-    const windowDays = Number(req.query.windowDays || 30);
-    const basis = String(req.query.basis || 'created');
-    const [fromKey, toKey] = dateFilterKeys(basis);
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    const ping = setInterval(() => { try { res.write(':\n\n'); } catch {} }, 25000);
-
-    let closed = false;
-    req.on('close', () => { closed = true; clearInterval(ping); });
-
-    const limit = 50;
-    let sent = 0;
-    let stats = { delivered: 0, in_transit: 0, ready_to_ship: 0, other: 0 };
-
-    async function enrichAndEmit(orders) {
-      const enriched = await hydrateShipments(orders, ml);
-      for (const row of enriched) {
-        if (closed) return;
-        res.write(`event: row\ndata: ${JSON.stringify(row)}\n\n`);
-        sent++;
-        stats[row.shipping_group] = (stats[row.shipping_group] || 0) + 1;
-        res.write(`event: progress\ndata: ${JSON.stringify({ sent, stats })}\n\n`);
-      }
-    }
-
-    // meta inicial com o intervalo
-    res.write(`event: meta\ndata: ${JSON.stringify({
-      expectedTotal: 0,
-      range: { from: from.toISOString(), to: to.toISOString() },
-      basis
-    })}\n\n`);
-
-    for (const win of dateWindows(from, to, windowDays)) {
-      let offset = 0;
-      let announced = false;
-
-      while (!closed) {
-        const url = new URL('/orders/search', BASE_API_URL);
-        url.searchParams.set('seller', String(sellerId));
-        url.searchParams.set('sort', 'date_desc');
-        url.searchParams.set('limit', String(limit));
-        url.searchParams.set('offset', String(offset));
-        url.searchParams.set(fromKey, win.fromISO);
-        url.searchParams.set(toKey,   win.toISO);
-
-        const { data } = await ml.get(url.pathname + url.search);
-        const results = Array.isArray(data?.results) ? data.results : [];
-
-        if (!announced) {
-          const total = Number(data?.paging?.total || 0);
-          res.write(`event: meta\ndata: ${JSON.stringify({ expectedTotal: total })}\n\n`);
-          announced = true;
-        }
-
-        if (!results.length) break;
-
-        await enrichAndEmit(results);
-
-        if (results.length < limit) break;
-        offset += limit;
-        if (offset >= 10000) break; // guarda de segurança
-      }
-    }
-
-    if (!closed) {
-      res.write(`event: done\ndata: ${JSON.stringify({ sent, stats, syncedAt: Date.now() })}\n\n`);
-    }
-  } catch (err) {
-    try {
-      const detail = (() => { try { return JSON.parse(fmtErr(err)); } catch { return { message: String(err?.message || 'error') }; }})();
-      res.write(`event: error\ndata: ${JSON.stringify({ message: 'stream_failed', detail })}\n\n`);
-    } finally {
-      res.end();
-    }
-  }
-});
-
 app.get('/api/orders/stream', ensureAccessToken, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
