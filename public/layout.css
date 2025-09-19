@@ -308,8 +308,19 @@ html[data-theme="dark"] .badge-status.muted { background-color: #334155; }
   padding: 10px 12px;
   border-top: 1px solid rgba(255,255,255,.06);
 }
-
 /* Reaproveita suas variantes existentes (.ok, .warn, .info, .muted) */
 .toast-header .badge-status { margin-inline-end: 4px; }
 /* garante que qualquer [hidden] fique invisível, mesmo se houver display definido em outra regra */
 [hidden] { display: none !important; }
+/* Topbar: manter tudo numa linha e alinhar certinho */
+.topbar .actions { flex-wrap: nowrap; }
+
+/* Os wrappers não devem criar caixas próprias */
+#top-actions-unauthed,
+#top-actions-authed { display: contents; }
+
+/* O formulário do "Sair" não deve quebrar a linha */
+.topbar .actions form { display: inline; }
+
+/* Evita quebra de texto nos botões longos */
+.topbar .actions .btn { white-space: nowrap; }

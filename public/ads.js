@@ -1,360 +1,402 @@
-// public/ads.js
-(function () {
-  'use strict';
-  const $ = s => document.querySelector(s);
+// public/ads.js — módulo da página de Anúncios
+'use strict';
 
-  // ===== Config =====
-  const PAGE_SIZE = 50; // FIXO
+// ===== Helpers básicos =====
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const fmtBRL = (v) =>
+  Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  // ===== Toast mínimo =====
-  function ensureToastStack() {
-    let n = document.querySelector('.toast-stack');
-    if (!n) {
-      n = document.createElement('div');
-      n.className = 'toast-stack';
-      Object.assign(n.style, {
-        position: 'fixed', top: '16px', right: '16px', zIndex: 1000,
-        display: 'grid', gap: '10px'
-      });
-      document.body.appendChild(n);
-    }
-    return n;
-  }
-  function toast(message, type = 'ok', ms = 3500) {
-    const stack = ensureToastStack();
-    const node = document.createElement('div');
-    node.className = 'toast';
-    Object.assign(node.style, {
-      background: 'var(--panel-bg,#111827)', border: '1px solid rgba(255,255,255,.08)',
-      borderRadius: '14px', padding: '10px 12px'
+function ensureToastStack() {
+  let n = document.querySelector('.toast-stack');
+  if (!n) {
+    n = document.createElement('div');
+    n.className = 'toast-stack';
+    Object.assign(n.style, {
+      position: 'fixed',
+      top: '16px',
+      right: '16px',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      pointerEvents: 'none'
     });
-    node.textContent = message;
-    stack.appendChild(node);
-    setTimeout(() => { try { node.remove(); } catch {} }, ms);
+    document.body.appendChild(n);
   }
-
-  // ===== Estado =====
-  const state = {
-    search: { items: [], total: 0, page: 1, pageSize: PAGE_SIZE },
-    es: null,
-    streaming: false,
-    expected: 0
-  };
-
-  // ===== Progresso (helpers) =====
-  let progressHideTimer = null;
-  const progressEl = () => ({
-    wrap: document.getElementById('progress'),
-    bar: document.getElementById('progressBar'),
-    label: document.getElementById('progressLabel')
+  return n;
+}
+function toast(msg, ms = 2200) {
+  const stack = ensureToastStack();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  Object.assign(el.style, {
+    background: 'var(--surface-2, #222)',
+    color: 'var(--text, #fff)',
+    border: '1px solid var(--border, #333)',
+    borderRadius: '10px',
+    padding: '10px 12px',
+    boxShadow: '0 6px 20px rgba(0,0,0,.35)',
+    pointerEvents: 'auto'
   });
-  function progressResetUI() {
-    const { bar, label } = progressEl();
-    if (bar) bar.style.width = '0%';
-    if (label) label.textContent = 'Aguardando…';
-  }
-  function progressHideNow() {
-    const { wrap } = progressEl();
-    if (wrap) wrap.hidden = true;
-    progressResetUI();
-    if (progressHideTimer) { clearTimeout(progressHideTimer); progressHideTimer = null; }
-  }
-  function progressStart(text = 'Sincronizando…', pct = 5) {
-    const { wrap } = progressEl();
-    if (!wrap) return;
-    wrap.hidden = false;
-    progressUpdate(pct, text);
-  }
-  function progressUpdate(pct = 10, text) {
-    const { bar, label } = progressEl();
-    if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(pct) || 0))}%`;
-    if (typeof text === 'string' && label) label.textContent = text;
-  }
-  function progressFinish(text = 'Concluído', hideAfterMs = 800) {
-    progressUpdate(100, text);
-    if (progressHideTimer) clearTimeout(progressHideTimer);
-    progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
-  }
-  function progressError(text = 'Erro', hideAfterMs = 1400) {
-    progressUpdate(100, text);
-    if (progressHideTimer) clearTimeout(progressHideTimer);
-    progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
-  }
-  function progressCancel(text = 'Stream cancelado', hideAfterMs = 900) {
-    progressUpdate(100, text);
-    if (progressHideTimer) clearTimeout(progressHideTimer);
-    progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
-  }
+  stack.appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
 
-  // ===== Utils =====
-  const fmtBRL = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const fmtInt = v => Number(v || 0).toLocaleString('pt-BR');
-  const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR', { hour12:false }) : '';
-  const escapeHtml = s => String(s || '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// ===== Estado =====
+const PAGE_SIZE = 50; // mantido fixo conforme o backend
+const state = {
+  search: { items: [], total: 0, page: 1, pageSize: PAGE_SIZE },
+  es: null,
+  streaming: false,
+  expected: 0,
+  editingId: null
+};
 
-  // ===== Render (tabela) =====
-  function renderRow(it) {
-    const title = it.title || it.id;
-    const price = it.sale_price?.price != null ? fmtBRL(it.sale_price.price) : fmtBRL(it.price);
-    const disp  = fmtInt(it.available_quantity);
-    const sold  = fmtInt(it.sold_quantity);
-    const status = it.status || '';
-    const updated = fmtDate(it.last_updated);
-    const link = it.permalink ? `<a class="btn" href="${it.permalink}" target="_blank" rel="noopener">Abrir</a>` : '';
-
-    return `<tr>
-      <td>
-        <button class="link open-desc" data-id="${it.id}" title="Ver/editar descrição">${escapeHtml(title)}</button>
-        <div class="muted" style="font-size:.8rem">${it.id}</div>
-      </td>
-      <td>${price || ''}</td>
-      <td>${disp || ''}</td>
-      <td>${sold || ''}</td>
-      <td>${escapeHtml(status)}</td>
-      <td>${updated || ''}</td>
-      <td>${link}</td>
-    </tr>`;
+// ===== Progresso acessível =====
+let progressHideTimer = null;
+function progressEls() {
+  return {
+    wrap: $('#progress'),
+    bar: $('#progressBar'),
+    label: $('#progressLabel')
+  };
+}
+function progressResetUI() {
+  const { bar, label } = progressEls();
+  if (bar) bar.style.width = '0%';
+  if (label) label.textContent = 'Aguardando…';
+}
+function progressHideNow() {
+  const { wrap } = progressEls();
+  if (wrap) {
+    try {
+      wrap.removeAttribute('aria-busy');
+      wrap.removeAttribute('aria-label');
+    } catch {}
+    wrap.hidden = true;
   }
-
-  function renderTableFromSearch() {
-    const { items, total, page, pageSize } = state.search;
-    $('#adsTotal').textContent = total;
-    const pages = Math.max(1, Math.ceil(total / pageSize));
-    $('#adsPageInfo').textContent = `Página ${page}/${pages}`;
-    $('#adsPrevBtn').disabled = page <= 1;
-    $('#adsNextBtn').disabled = page >= pages;
-    $('#adsTbody').innerHTML = items.length
-      ? items.map(renderRow).join('')
-      : `<tr><td colspan="7" class="muted">Nenhum dado para exibir.</td></tr>`;
+  progressResetUI();
+  if (progressHideTimer) {
+    clearTimeout(progressHideTimer);
+    progressHideTimer = null;
   }
+}
+function progressStart(text = 'Sincronizando…', pct = 5) {
+  const { wrap } = progressEls();
+  if (!wrap) return;
+  wrap.hidden = false;
+  try {
+    wrap.setAttribute('aria-busy', 'true');
+    if (typeof text === 'string') wrap.setAttribute('aria-label', text);
+  } catch {}
+  progressUpdate(pct, text);
+}
+function progressUpdate(pct = 10, text) {
+  const { bar, label } = progressEls();
+  if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(pct) || 0))}%`;
+  if (typeof text === 'string' && label) label.textContent = text;
+  try {
+    const w = $('#progress');
+    if (w && typeof text === 'string') w.setAttribute('aria-label', text);
+  } catch {}
+}
+function progressFinish(text = 'Concluído', hideAfterMs = 900) {
+  try {
+    $('#progress')?.setAttribute('aria-busy', 'false');
+  } catch {}
+  progressUpdate(100, text);
+  if (progressHideTimer) clearTimeout(progressHideTimer);
+  progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
+}
+function progressError(text = 'Erro', hideAfterMs = 1600) {
+  try {
+    $('#progress')?.setAttribute('aria-busy', 'false');
+  } catch {}
+  progressUpdate(100, text);
+  if (progressHideTimer) clearTimeout(progressHideTimer);
+  progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
+}
+function progressCancel(text = 'Stream cancelado', hideAfterMs = 1000) {
+  try {
+    $('#progress')?.setAttribute('aria-busy', 'false');
+  } catch {}
+  progressUpdate(100, text);
+  if (progressHideTimer) clearTimeout(progressHideTimer);
+  progressHideTimer = setTimeout(progressHideNow, hideAfterMs);
+}
 
-  // ===== Busca =====
-  async function doSearch(page = 1) {
-    state.search.page = page;
-    const { pageSize } = state.search;
-    const offset = (page - 1) * pageSize;
+// ===== Busca HTTP =====
+async function doSearch() {
+  const q = $('#adsQ')?.value?.trim() || '';
+  const status = $('#adsStatus')?.value || '';
+  const category = $('#adsCategory')?.value?.trim() || '';
+  const free = $('#adsFreeShipping')?.checked ? 'true' : '';
+  const sort = $('#adsSort')?.value || '';
 
-    const q = $('#adsQ').value.trim();
-    const status = $('#adsStatus').value;
-    const category_id = $('#adsCategory').value.trim();
-    const free_shipping = $('#adsFreeShipping').checked ? 'true' : 'false';
-    const sort = $('#adsSort').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  if (category) params.set('category', category);
+  if (free) params.set('free_shipping', 'true');
+  if (sort) params.set('sort', sort);
+  params.set('limit', String(PAGE_SIZE));
+  params.set('page', '1');
 
-    progressStart('Buscando anúncios…', 15);
-
-    const params = new URLSearchParams({
-      limit: String(pageSize),          // FIXO 50
-      offset: String(offset),
-      include: 'details,sale_price',
-      sort
+  progressStart('Buscando anúncios…', 15);
+  try {
+    const res = await fetch(`/api/ads/search?${params.toString()}`, {
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
     });
-    if (q) params.set('q', q);
-    if (status) params.set('status', status);
-    if (category_id) params.set('category_id', category_id);
-    if (free_shipping === 'true') params.set('free_shipping', 'true');
-
-    try {
-      const r = await fetch(`/api/ads/search?${params.toString()}`);
-      if (!r.ok) throw new Error('Falha na busca');
-      const data = await r.json();
-      state.search.items = Array.isArray(data.items) ? data.items : [];
-      state.search.total = Number(data?.paging?.total || state.search.items.length);
-      renderTableFromSearch();
-      progressFinish(`Encontrados ${state.search.total}`);
-    } catch (e) {
-      console.error(e);
-      $('#adsTbody').innerHTML = `<tr><td colspan="7" class="muted">Erro ao buscar anúncios.</td></tr>`;
-      progressError('Erro na busca');
-    }
-  }
-
-  // ===== Painel "Descrição" =====
-  function openDescPanel(id) {
-    $('#descPanel').hidden = false;
-    $('#descItemId').textContent = id;
-    $('#descText').value = '';
-    $('#descMeta').textContent = 'Carregando descrição…';
-    $('#descError').textContent = '';
-    updateDescCounter();
-    loadDescription(id).then(updateDescCounter);
-  }
-  function closeDescPanel() {
-    $('#descPanel').hidden = true;
-    $('#descItemId').textContent = '';
-    $('#descText').value = '';
-    $('#descMeta').textContent = '';
-    $('#descError').textContent = '';
-  }
-  async function loadDescription(id) {
-    try {
-      const r = await fetch(`/api/items/${encodeURIComponent(id)}/description`);
-      const data = await r.json();
-      if (data?.ok) {
-        $('#descText').value = data.plain_text || '';
-        $('#descMeta').textContent = data.last_updated
-          ? `Última atualização: ${new Date(data.last_updated).toLocaleString('pt-BR', { hour12:false })}`
-          : '';
-      } else {
-        $('#descMeta').textContent = 'Não foi possível obter a descrição.';
-      }
-    } catch {
-      $('#descMeta').textContent = 'Erro ao obter a descrição.';
-    }
-  }
-  function updateDescCounter() {
-    const len = $('#descText').value.length;
-    $('#descCount').textContent = `${len} caracteres`;
-  }
-  async function saveDescription() {
-    const id = $('#descItemId').textContent.trim();
-    const plain_text = $('#descText').value;
-    $('#descError').textContent = '';
-    try {
-      const r = await fetch(`/api/items/${encodeURIComponent(id)}/description`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plain_text })
-      });
-      const data = await r.json();
-      if (!r.ok || !data?.ok) throw data?.error || { message: 'Falha ao salvar' };
-      toast('Descrição salva com sucesso.');
-      closeDescPanel();
-    } catch (e) {
-      const position = e?.position ?? (() => {
-        const msg = typeof e?.message === 'string' ? e.message : JSON.stringify(e || {});
-        const m = /plain_text\[(\d+)\]/.exec(msg);
-        return m ? Number(m[1]) : null;
-      })();
-      if (position != null) {
-        const ta = $('#descText');
-        const pos = Math.max(0, Math.min(position, ta.value.length - 1));
-        ta.focus();
-        try { ta.setSelectionRange(pos, Math.min(pos + 1, ta.value.length)); } catch {}
-        $('#descError').textContent = `Erro de validação próximo da posição ${position}. Revise o caractere/trecho destacado.`;
-      } else {
-        $('#descError').textContent = 'Erro ao salvar descrição. Verifique o conteúdo.';
-      }
-      toast('Erro ao salvar descrição.', 'warn', 4500);
-    }
-  }
-
-  // ===== Stream =====
-  function startStream() {
-    if (state.streaming) return;
-    state.streaming = true;
-    state.search.items = [];
-    state.search.total = 0;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    state.search.items = Array.isArray(data.items) ? data.items : [];
+    state.search.total = Number(data.total || state.search.items.length || 0);
     state.search.page = 1;
-    renderTableFromSearch();
 
-    $('#adsStreamBtn').disabled = true;
-    $('#adsHttpBtn').disabled = true;
-    $('#adsCancelBtn').style.display = 'inline-block';
-
-    progressStart('Preparando…', 5);
-
-    const es = new EventSource('/api/items/all/stream');
-    state.es = es;
-
-    es.addEventListener('meta', e => {
-      const meta = JSON.parse(e.data || '{}');
-      state.expected = Number(meta.total_ids || 0);
-      progressUpdate(8, state.expected ? `Ids coletados: ${state.expected}` : 'Coletando IDs…');
-    });
-
-    es.addEventListener('batch', e => {
-      const payload = JSON.parse(e.data || '{}');
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      state.search.items.push(...items);
-      state.search.total = state.search.items.length;
-      renderTableFromSearch();
-
-      if (state.expected > 0) {
-        const pct = (state.search.total / state.expected) * 100;
-        progressUpdate(pct, `Recebidos ${state.search.total}/${state.expected}`);
-      } else {
-        const approx = 10 + Math.min(70, state.search.total / 2);
-        progressUpdate(approx, `Recebidos ${state.search.total}…`);
-      }
-    });
-
-    es.addEventListener('done', () => {
-      stopStreamUI();
-      progressFinish('Concluído');
-    });
+    renderTable();
+    progressFinish(`Encontrados ${state.search.total} anúncio(s).`);
+  } catch (err) {
+    console.error('Busca falhou', err);
+    toast('Falha ao buscar anúncios');
+    progressError('Falha ao buscar anúncios');
   }
-  function cancelStream() {
-    if (!state.streaming) return;
-    try { state.es?.close(); } catch {}
-    stopStreamUI();
+}
+
+// ===== Renderização da Tabela =====
+function renderTable() {
+  const tbody = $('#tbody');
+  if (!tbody) return;
+
+  const items = state.search.items || [];
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Nenhum resultado. Ajuste os filtros e tente novamente.</td></tr>`;
+    return;
+  }
+
+  const rows = items.map((it) => {
+    const id = it.id || it.item_id || '';
+    const title = it.title || '(sem título)';
+    const status = it.status || it.listing_status || '';
+    const sold = it.sold_quantity ?? it.sold ?? 0;
+    const permalink = it.permalink || it.perma_link || '';
+    const price = it.sale_price && it.sale_price > 0 ? it.sale_price : it.price;
+    const hasSale = it.sale_price && it.sale_price > 0 && Number(it.price) !== Number(it.sale_price);
+
+    const priceHtml = hasSale
+      ? `<div><strong>${fmtBRL(price)}</strong> <span class="muted" style="text-decoration:line-through;opacity:.8;margin-left:6px">${fmtBRL(it.price)}</span></div>`
+      : `<div>${fmtBRL(price)}</div>`;
+
+    const titleHtml = permalink
+      ? `<a href="${permalink}" target="_blank" rel="noopener">${escapeHtml(title)}</a>`
+      : escapeHtml(title);
+
+    return `
+      <tr>
+        <td>${titleHtml}</td>
+        <td>${priceHtml}</td>
+        <td>${Number(sold || 0)}</td>
+        <td>${escapeHtml(status)}</td>
+        <td>${escapeHtml(String(id))}</td>
+        <td style="text-align:right">
+          <button class="btn small" data-act="desc" data-id="${escapeAttr(id)}">Descrição</button>
+        </td>
+      </tr>
+    `.trim();
+  });
+
+  tbody.innerHTML = rows.join('\n');
+
+  // Bind ação de descrição
+  $$('#tbody [data-act="desc"]').forEach((btn) => {
+    btn.addEventListener('click', () => openDescription(btn.getAttribute('data-id')));
+  });
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+function escapeAttr(s) {
+  return escapeHtml(s).replaceAll('"', '&quot;');
+}
+
+// ===== Painel de Descrição =====
+async function openDescription(itemId) {
+  if (!itemId) return;
+  const panel = $('#descPanel');
+  const textarea = $('#descText');
+  if (!panel || !textarea) return;
+
+  progressStart('Carregando descrição…', 20);
+  try {
+    const res = await fetch(`/api/items/${encodeURIComponent(itemId)}/description`, {
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // Mercado Livre retorna algo como { text, plain_text, date_created, last_updated }
+    textarea.value = data?.text || data?.plain_text || '';
+    state.editingId = itemId;
+    panel.hidden = false;
+    textarea.focus();
+    progressFinish('Descrição carregada');
+  } catch (err) {
+    console.error('Erro ao carregar descrição', err);
+    toast('Não foi possível carregar a descrição');
+    progressError('Falha ao carregar descrição');
+  }
+}
+
+async function saveDescription() {
+  const itemId = state.editingId;
+  const panel = $('#descPanel');
+  const textarea = $('#descText');
+  if (!itemId || !panel || !textarea) return;
+
+  const body = { plain_text: String(textarea.value || '') };
+
+  progressStart('Salvando descrição…', 25);
+  try {
+    const res = await fetch(`/api/items/${encodeURIComponent(itemId)}/description`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await res.json().catch(() => null); // algumas APIs podem não retornar body
+    toast('Descrição salva com sucesso');
+    progressFinish('Descrição salva');
+  } catch (err) {
+    console.error('Erro ao salvar descrição', err);
+    toast('Falha ao salvar descrição');
+    progressError('Falha ao salvar descrição');
+  }
+}
+
+function closeDescription() {
+  const panel = $('#descPanel');
+  const textarea = $('#descText');
+  if (panel) panel.hidden = true;
+  if (textarea) textarea.value = '';
+  state.editingId = null;
+}
+
+// ===== Sincronização por Stream (SSE) =====
+function startStreamSync() {
+  if (state.streaming) return;
+  state.streaming = true;
+
+  const syncBtn = $('#syncBtn');
+  const cancelBtn = $('#cancelBtn');
+  if (syncBtn) syncBtn.style.display = 'none';
+  if (cancelBtn) cancelBtn.style.display = 'inline-block';
+
+  progressStart('Iniciando stream de itens…', 5);
+  try {
+    state.es = new EventSource('/api/items/all/stream', { withCredentials: true });
+  } catch (err) {
+    console.error('EventSource erro de criação', err);
+    toast('Seu navegador pode não suportar stream');
+    progressError('Falha ao iniciar stream');
+    state.streaming = false;
+    if (syncBtn) syncBtn.style.display = 'inline-block';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    return;
+  }
+
+  state.es.addEventListener('open', () => {
+    progressUpdate(10, 'Conexão aberta…');
+  });
+
+  state.es.addEventListener('message', (evt) => {
+    if (!evt?.data) return;
+    let data;
+    try { data = JSON.parse(evt.data); } catch { return; }
+
+    // Protocolo flexível: aceitamos keys comuns
+    if (typeof data.total === 'number') {
+      state.expected = data.total;
+      progressUpdate(12, `Total previsto: ${data.total}`);
+    }
+    if (typeof data.processed === 'number' && state.expected > 0) {
+      const pct = Math.max(0, Math.min(100, Math.round((data.processed / state.expected) * 100)));
+      progressUpdate(pct, `Processados ${data.processed}/${state.expected}`);
+    }
+    if (data.item) {
+      // opcional: enriquecer a UI quando vier item a item
+      // por padrão não inserimos dinamicamente para evitar flicker
+    }
+    if (data.done || data.finished) {
+      progressFinish('Sincronização concluída');
+      stopStreamSync(false);
+      // dica: recarregar busca após concluir
+      if (($('#adsQ')?.value || '').length || $('#adsStatus')?.value || $('#adsCategory')?.value) {
+        doSearch().catch(() => {});
+      }
+    }
+    if (data.error) {
+      toast(`Erro no stream: ${data.error}`);
+      progressError('Erro durante o stream');
+      stopStreamSync(true);
+    }
+    if (data.message && !data.done && !data.error) {
+      // mensagens informativas do servidor
+      progressUpdate(undefined, String(data.message));
+    }
+  });
+
+  state.es.addEventListener('error', (e) => {
+    console.error('SSE error', e);
+    toast('Conexão de stream encerrada');
+    progressError('Conexão encerrada');
+    stopStreamSync(true);
+  });
+}
+
+function stopStreamSync(userCanceled = true) {
+  if (state.es) {
+    try { state.es.close(); } catch {}
+  }
+  state.es = null;
+  const syncBtn = $('#syncBtn');
+  const cancelBtn = $('#cancelBtn');
+  if (syncBtn) syncBtn.style.display = 'inline-block';
+  if (cancelBtn) cancelBtn.style.display = 'none';
+  state.streaming = false;
+
+  if (userCanceled) {
     progressCancel('Stream cancelado');
   }
-  function stopStreamUI() {
-    try { state.es?.close(); } catch {}
-    state.es = null;
-    state.streaming = false;
-    $('#adsStreamBtn').disabled = false;
-    $('#adsHttpBtn').disabled = false;
-    $('#adsCancelBtn').style.display = 'none';
-  }
+}
 
-  // ===== HTTP fallback =====
-  async function syncHttp() {
-    if (state.streaming) return;
-    $('#adsStreamBtn').disabled = true;
-    $('#adsHttpBtn').disabled = true;
-    progressStart('Consultando…', 10);
+// ===== Eventos da UI =====
+function bindUi() {
+  $('#adsSearchBtn')?.addEventListener('click', doSearch);
+  $('#adsQ')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doSearch();
+  });
 
-    try {
-      const r = await fetch('/api/items/all');
-      if (!r.ok) throw new Error('Falha na API');
-      const data = await r.json();
-      state.search.items = Array.isArray(data.items) ? data.items : [];
-      state.search.total = state.search.items.length;
-      state.search.page = 1;
-      renderTableFromSearch();
-      progressFinish('Concluído');
-    } catch (e) {
-      console.error(e);
-      $('#adsTbody').innerHTML = `<tr><td colspan="7" class="muted">Erro ao sincronizar.</td></tr>`;
-      progressError('Erro');
-    } finally {
-      $('#adsStreamBtn').disabled = false;
-      $('#adsHttpBtn').disabled = false;
-    }
-  }
+  $('#syncBtn')?.addEventListener('click', startStreamSync);
+  $('#cancelBtn')?.addEventListener('click', () => stopStreamSync(true));
 
-  // ===== Eventos =====
-  function wire() {
-    $('#adsPrevBtn').addEventListener('click', () => doSearch(Math.max(1, state.search.page - 1)));
-    $('#adsNextBtn').addEventListener('click', () => {
-      const pages = Math.max(1, Math.ceil(state.search.total / state.search.pageSize));
-      doSearch(Math.min(pages, state.search.page + 1));
-    });
+  $('#descSaveBtn')?.addEventListener('click', saveDescription);
+  $('#descCloseBtn')?.addEventListener('click', closeDescription);
 
-    $('#adsSearchBtn').addEventListener('click', () => doSearch(1));
-    $('#adsQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(1); });
-    $('#adsSort').addEventListener('change', () => doSearch(1));
-    $('#adsFreeShipping').addEventListener('change', () => doSearch(1));
-    $('#adsCategory').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(1); });
+  // Ações de autenticação do topo podem ser tratadas por /app.js
+}
 
-    $('#adsTbody').addEventListener('click', (e) => {
-      const btn = e.target.closest('.open-desc');
-      if (btn) openDescPanel(btn.dataset.id);
-    });
-    $('#descSaveBtn').addEventListener('click', saveDescription);
-    $('#descCloseBtn').addEventListener('click', closeDescPanel);
-    $('#descText').addEventListener('input', updateDescCounter);
-
-    $('#adsStreamBtn').addEventListener('click', startStream);
-    $('#adsCancelBtn').addEventListener('click', cancelStream);
-    $('#adsHttpBtn').addEventListener('click', syncHttp);
-
-    renderTableFromSearch();
-    progressHideNow();
-  }
-
-  document.addEventListener('DOMContentLoaded', wire);
-})();
+// ===== Inicialização =====
+document.addEventListener('DOMContentLoaded', () => {
+  bindUi();
+  // opcional: carregar lista inicial em branco, aguardar ação do usuário
+  // doSearch();
+});

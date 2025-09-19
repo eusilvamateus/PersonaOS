@@ -80,6 +80,26 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
+// depois dos seus middlewares e do ensureAccessToken
+app.get("/api/items/:id/description", ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
+    res.json(data || {}); // retorna { text, plain_text, ... } da API
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok: false, error: { code: "description_fetch_failed", message: msg } });
+  }
+});
+app.get("/diag/ml", ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get("/users/me");
+    res.json({ ok: true, me: { id: data.id, nickname: data.nickname } });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
 // Upload local para repassar ao ML
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
@@ -640,13 +660,26 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     res.status(500).json({ ok: false, error: { code: 'ads_search_failed', message: msg } });
   }
 });
-
+// GET descrição (api_version=2)
+app.get('/api/items/:id/description', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
+    // a API pode devolver { text, plain_text, ... }
+    res.json(data || {});
+  } catch (err) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
+    res.status(500).json({ ok:false, error:{ code:'description_fetch_failed', message: msg } });
+  }
+});
 
 // PUT descrição (api_version=2) — agora com extração da posição do erro
 app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
-    const plain_text = String(req.body?.plain_text || '');
+    const plain_text = String(
+      req.body?.plain_text ?? req.body?.text ?? ''
+    );
     if (!plain_text) return res.status(400).json({ ok: false, error: { code: 'bad_request', message: 'plain_text é obrigatório' } });
     const params = { api_version: 2 };
     const { data } = await ml.put(`/items/${encodeURIComponent(req.params.id)}/description`, { plain_text }, { params });

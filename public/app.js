@@ -17,6 +17,10 @@ function toast(msg, type = 'ok') {
   setTimeout(() => root.removeChild(el), 4400);
 }
 
+// Helpers para exibir/ocultar respeitando o atributo `hidden`
+const show = el => { if (el) { el.hidden = false; el.style.removeProperty?.('display'); } };
+const hide = el => { if (el) { el.hidden = true; } };
+
 // Lógica de Autenticação e UI Dinâmica
 async function loadDiag() {
   const t = await getJSON('/diag');
@@ -34,28 +38,33 @@ async function loadDiag() {
   try {
     const o = JSON.parse(t);
     if (o && o.nickname) {
-      // --- ESTADO: AUTENTICADO ---
+      // ESTADO: AUTENTICADO
       if (userChip) userChip.innerHTML = `<span class="dot ok"></span> ${o.nickname} (#${o.user_id})`;
       if (authSuccessMessage) {
         authSuccessMessage.className = 'auth-status-banner success';
         authSuccessMessage.innerHTML = `<span class="icon">✅</span><span>Autenticado como <strong>${o.nickname}</strong>.</span>`;
-        authSuccessMessage.style.display = 'flex';
+        show(authSuccessMessage);
       }
-      if (authActionsUnauthed) authActionsUnauthed.style.display = 'none';
-      if (authActionsAuthed) authActionsAuthed.style.display = 'flex';
-      if (topActionsUnauthed) topActionsUnauthed.style.display = 'none';
-      if (topActionsAuthed) topActionsAuthed.style.display = 'inline';
+
+      hide(authActionsUnauthed);
+      show(authActionsAuthed);
+
+      hide(topActionsUnauthed);
+      show(topActionsAuthed);
     } else {
       throw new Error('Usuário não autenticado.');
     }
   } catch (e) {
-    // --- ESTADO: NÃO AUTENTICADO OU ERRO ---
+    // ESTADO: NÃO AUTENTICADO OU ERRO
     if (userChip) userChip.innerHTML = `<span class="dot warn"></span> não autenticado`;
-    if (authSuccessMessage) authSuccessMessage.style.display = 'none';
-    if (authActionsUnauthed) authActionsUnauthed.style.display = 'flex';
-    if (authActionsAuthed) authActionsAuthed.style.display = 'none';
-    if (topActionsUnauthed) topActionsUnauthed.style.display = 'inline';
-    if (topActionsAuthed) topActionsAuthed.style.display = 'none';
+
+    hide(authSuccessMessage);
+
+    show(authActionsUnauthed);
+    hide(authActionsAuthed);
+
+    show(topActionsUnauthed);
+    hide(topActionsAuthed);
   }
 }
 
@@ -159,11 +168,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(0, 0);
     if (syncMeta) syncMeta.textContent = 'Conectando…';
 
-    esSync = new EventSource('/api/items/all/stream');
+    const es = new EventSource('/api/items/all/stream');
+    esSync = es;
     let total = 0, sent = 0;
 
-    esSync.addEventListener('meta', (ev) => { const data = JSON.parse(ev.data); total = data.total_ids || 0; setProgress(0, total); });
-    esSync.addEventListener('batch', (ev) => {
+    es.addEventListener('meta', (ev) => { const data = JSON.parse(ev.data); total = data.total_ids || 0; setProgress(0, total); });
+    es.addEventListener('batch', (ev) => {
       const data = JSON.parse(ev.data);
       const items = data.items || [];
       allItems.push(...items);
@@ -171,14 +181,14 @@ document.addEventListener('DOMContentLoaded', () => {
       setProgress(sent, total);
       if (allItems.length <= pageSize()) renderSyncPage();
     });
-    esSync.addEventListener('progress', (ev) => { const data = JSON.parse(ev.data); setProgress(data.sent || sent, data.total || total); });
-    esSync.addEventListener('done', () => {
+    es.addEventListener('progress', (ev) => { const data = JSON.parse(ev.data); setProgress(data.sent || sent, data.total || total); });
+    es.addEventListener('done', () => {
       if (syncMeta) syncMeta.textContent = `Sincronização concluída · ${allItems.length} itens.`;
       renderSyncPage();
       toast('Sync concluído', 'ok');
       closeSync();
     });
-    esSync.addEventListener('error', () => { toast('Erro no stream (sync)', 'err'); closeSync(); });
+    es.addEventListener('error', () => { toast('Erro no stream (sync)', 'err'); closeSync(); });
   });
 
   syncHttpBtn?.addEventListener('click', async () => {
