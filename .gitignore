@@ -1,28 +1,8 @@
 # Credenciais e dados sensíveis
 tokens.json
-tokens/
 
 # Variáveis de ambiente locais (mantém .env.example versionado)
 .env
-
-# Logs e diagnósticos
-*.log
-npm-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-logs/
-*.pid
-
-# Builds e caches
-dist/
-build/
-coverage/
-.cache/
-.tmp/
-
 # Sistema operacional e IDE
-.DS_Store
-Thumbs.db
-.idea/
 .vscode/
-token.json
+node_modules
