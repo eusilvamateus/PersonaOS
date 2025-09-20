@@ -6,25 +6,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="/layout.css" rel="stylesheet" />
   <link href="/styles.css" rel="stylesheet" />
+  <style>
+    /* ajustes de alinhamento do topo */
+    .topbar .container{display:flex;align-items:center;gap:16px}
+    .topbar .brand{display:flex;align-items:center;gap:12px}
+    .topbar .top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+    .panel-header{display:flex;align-items:center;justify-content:space-between}
+    .panel-header .panel-actions{margin-left:auto}
+  </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <div class="logo">💬</div>
-      <div>
-        <div>Mercado Livre</div>
-        <div class="muted">Mensagens &amp; Anúncios</div>
+    <div class="container"><!-- NOVO wrapper -->
+      <div class="brand">
+        <div class="logo">💬</div>
+        <div>
+          <div>Mercado Livre</div>
+          <div class="muted">Mensagens & Pós-venda</div>
+        </div>
       </div>
-    </div>
 
-    <div class="top-actions">
-      <span id="top-actions-unauthed">
-        <button class="btn primary" id="loginBtn">Entrar</button>
-      </span>
-      <span id="top-actions-authed" hidden>
-        <button class="btn" id="refreshBtn">Renovar token</button>
-        <form method="post" action="/logout"><button class="btn" type="submit">Sair</button></form>
-      </span>
+      <div class="top-actions">
+        <span id="top-actions-unauthed">
+          <button class="btn primary" id="loginBtn">Entrar</button>
+        </span>
+        <span id="top-actions-authed" hidden>
+          <button class="btn" id="refreshBtn">Renovar token</button>
+          <form method="post" action="/logout"><button class="btn" type="submit">Sair</button></form>
+        </span>
+      </div>
     </div>
   </header>
 
@@ -33,17 +43,28 @@
       <h3>Navegação</h3>
       <nav class="nav">
         <a href="#sec-auth">🔐 Autenticação</a>
-        <a href="#sec-unread">🕒 Pendentes</a>
-        <a href="#sec-pack">💬 Conversas</a>
-        <a href="#sec-send">✉️ Enviar Mensagem</a>
-        <a href="#sec-attach">📎 Anexos</a>
+        <a href="/post-sale">📬 Pós-venda</a><!-- NOVO -->
         <a href="/ads">📈 Anúncios</a>
-        <a href="/orders">🧾 Pedidos</a>  
+        <a href="/orders">🧾 Pedidos</a>
       </nav>
       <div id="userChip" class="chip-status"><span class="dot warn"></span> não autenticado</div>
     </aside>
 
     <main class="content">
+      <!-- Destaque para nova tela unificada -->
+      <section class="panel" id="sec-postsale-feature">
+        <div class="panel-header">
+          <h2>Pós-venda unificado</h2>
+          <div class="panel-actions">
+            <a class="btn primary" href="/post-sale">Abrir Pós-venda</a>
+          </div>
+        </div>
+        <div class="panel-body">
+          <p class="muted">Reunimos <em>Pendentes</em>, <em>Conversas</em>, <em>Enviar Mensagem</em> e <em>Upload de Anexos</em> em uma única tela.</p>
+        </div>
+      </section>
+
+      <!-- Autenticação & Status (mantido na Home) -->
       <section class="panel" id="sec-auth">
         <div class="panel-header"><h2>Autenticação &amp; Status</h2></div>
         <div id="auth-success-message" class="auth-status-banner" hidden role="status" aria-live="polite" aria-atomic="true"></div>
@@ -66,7 +87,8 @@
         </div>
       </section>
 
-      <section class="panel" id="sec-unread">
+      <!-- ===== Blocos antigos: agora ocultos (foram movidos para /post-sale) ===== -->
+      <section class="panel" id="sec-unread" hidden>
         <div class="panel-header"><h2>Consultar Mensagens Pendentes</h2></div>
         <div class="panel-body grid">
           <div class="col-4 field">
@@ -86,7 +108,7 @@
         </div>
       </section>
 
-      <section class="panel" id="sec-pack">
+      <section class="panel" id="sec-pack" hidden>
         <div class="panel-header"><h2>Listar Mensagens de uma Conversa</h2></div>
         <div class="panel-body grid">
           <div class="col-6 field">
@@ -112,7 +134,7 @@
         </div>
       </section>
 
-      <section class="panel" id="sec-send">
+      <section class="panel" id="sec-send" hidden>
         <div class="panel-header"><h2>Enviar Mensagem Pós-venda</h2></div>
         <div class="panel-body grid">
           <div class="col-6 field">
@@ -140,7 +162,7 @@
         </div>
       </section>
 
-      <section class="panel" id="sec-attach">
+      <section class="panel" id="sec-attach" hidden>
         <div class="panel-header"><h2>Upload de Anexos</h2></div>
         <div class="panel-body grid">
           <div class="col-8 field">
@@ -156,8 +178,7 @@
           </div>
         </div>
       </section>
-
-      <!-- Bloco de sincronização de anúncios foi removido da Home (agora está em /ads) -->
+      <!-- ===== /blocos antigos ===== -->
     </main>
   </div>
 

@@ -80,26 +80,6 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
-// depois dos seus middlewares e do ensureAccessToken
-app.get("/api/items/:id/description", ensureAccessToken, async (req, res) => {
-  try {
-    const ml = mlFor(req);
-    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
-    res.json(data || {}); // retorna { text, plain_text, ... } da API
-  } catch (err) {
-    const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
-    res.status(500).json({ ok: false, error: { code: "description_fetch_failed", message: msg } });
-  }
-});
-app.get("/diag/ml", ensureAccessToken, async (req, res) => {
-  try {
-    const ml = mlFor(req);
-    const { data } = await ml.get("/users/me");
-    res.json({ ok: true, me: { id: data.id, nickname: data.nickname } });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
-  }
-});
 
 // Upload local para repassar ao ML
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
@@ -120,8 +100,12 @@ app.get('/oauth/paste', (req, res) => {
 app.get('/ads', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'ads.html'));
 });
+// página unificada de Pós-venda
+app.get('/post-sale', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'post-sale.html'));
+});
 
-// -------------------- Diag + Flash --------------------
+// -------------------- Diag + Status + Flash --------------------
 app.get('/diag', (req, res) => {
   res.json({
     ml_app_id: ML_APP_ID,
@@ -135,6 +119,11 @@ app.get('/diag', (req, res) => {
     nickname: req.session?.nickname || null,
     now_iso: new Date().toISOString()
   });
+});
+
+// usado pela topbar para esconder "Entrar"
+app.get('/status', (req, res) => {
+  res.json({ authed: !!req.session?.access_token, nickname: req.session?.nickname || null });
 });
 
 // Home busca a mensagem e ela é consumida (apagada) aqui
@@ -399,6 +388,41 @@ app.get('/api/messages/attachments/:attachmentId', ensureAccessToken, async (req
   }
 });
 
+// ---- Action Guide (motivos/caps/envio por opção) ----
+app.get('/api/messages/action_guide/:packId', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { packId } = req.params;
+    const { data } = await ml.get(`/messages/action_guide/packs/${encodeURIComponent(packId)}`, { params: { tag: 'post_sale' } });
+    res.json(data);
+  } catch (err) {
+    res.status(500).send(`Erro em action_guide: ${fmtErr(err)}`);
+  }
+});
+
+app.get('/api/messages/action_guide/:packId/caps_available', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { packId } = req.params;
+    const { data } = await ml.get(`/messages/action_guide/packs/${encodeURIComponent(packId)}/caps_available`, { params: { tag: 'post_sale' } });
+    res.json(data);
+  } catch (err) {
+    res.status(500).send(`Erro em caps_available: ${fmtErr(err)}`);
+  }
+});
+
+app.post('/api/messages/action_guide/:packId/option', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { packId } = req.params;
+    const payload = req.body || {};
+    const { data } = await ml.post(`/messages/action_guide/packs/${encodeURIComponent(packId)}/option`, payload, { params: { tag: 'post_sale' }, idempotent: false });
+    res.json(data);
+  } catch (err) {
+    res.status(500).send(`Erro ao enviar por option: ${fmtErr(err)}`);
+  }
+});
+
 // -------------------- ITENS (ANÚNCIOS) BÁSICO --------------------
 async function collectAllItemIds(req, ml) {
   const userId = req.session.user_id;
@@ -512,8 +536,7 @@ app.get('/api/items/all/stream', ensureAccessToken, async (req, res) => {
   }
 });
 
-// -------------------- ADS (NOVO): SEARCH + DESCRIPTION --------------------
-// GET /api/ads/search?include=details,sale_price
+// -------------------- ADS (SEARCH + DESCRIPTION) --------------------
 app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
@@ -536,9 +559,6 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
       .map(s => s.trim())
       .filter(Boolean);
 
-    // Decide a fonte:
-    // - Usa /sites quando há q/category/frete grátis/sort especial
-    // - Se for apenas status -> /users
     const sortNeedsSites = ['price_asc', 'price_desc', 'last_updated_desc'].includes(String(sort));
     const useSites = Boolean(q || category_id || free_shipping === 'true' || sortNeedsSites);
 
@@ -579,7 +599,6 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     try {
       ids = useSites ? await fetchFromSites() : await fetchFromUsers();
     } catch (e) {
-      // Fallback: se sites falhar, tenta users (útil p/ casos com apenas status)
       if (useSites) {
         source = 'users';
         ids = await fetchFromUsers();
@@ -588,12 +607,10 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
       }
     }
 
-    // Enriquecimento (sempre vamos precisar ao menos de status para filtrar localmente)
     const items = ids.map(id => ({ id }));
-    const needDetails = wants.includes('details') || (source === 'sites' && status); // detalhes necessários para filtrar status
+    const needDetails = wants.includes('details') || (source === 'sites' && status);
 
     if (needDetails && ids.length) {
-      // garante que 'status' esteja nos atributos
       let attrs = attributes ||
         'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
       if (!attrs.split(',').includes('status')) attrs += ',status';
@@ -607,18 +624,15 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
         for (const it of items) if (map.has(it.id)) Object.assign(it, map.get(it.id));
       }
 
-      // Se a origem foi /sites e o cliente pediu status, filtramos localmente
       if (source === 'sites' && status) {
         const wanted = String(status).toLowerCase();
         for (let i = items.length - 1; i >= 0; i--) {
           if (String(items[i]?.status || '').toLowerCase() !== wanted) items.splice(i, 1);
         }
-        // Ajusta o total mostrado (total original vem do marketplace; aqui mostramos o total filtrado exibido)
         paging.total = items.length;
       }
     }
 
-    // Sale price (context marketplace)
     if (wants.includes('sale_price') && items.length) {
       const MAX = 6; let idx = 0, running = 0;
       await new Promise(resolve => {
@@ -638,7 +652,6 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
       });
     }
 
-    // Ordenação local complementar
     if (sort === 'sold_desc') {
       items.sort((a, b) => (b.sold_quantity || 0) - (a.sold_quantity || 0));
     } else if (source === 'users' && sort !== 'relevance') {
@@ -660,20 +673,19 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     res.status(500).json({ ok: false, error: { code: 'ads_search_failed', message: msg } });
   }
 });
-// GET descrição (api_version=2)
+
+// Descrição (api_version=2)
 app.get('/api/items/:id/description', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
     const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}/description`);
-    // a API pode devolver { text, plain_text, ... }
-    res.json(data || {});
+    res.json(data || {}); // { text, plain_text, ... }
   } catch (err) {
     const msg = err?.response?.data ? JSON.stringify(err.response.data) : String(err?.message || err);
     res.status(500).json({ ok:false, error:{ code:'description_fetch_failed', message: msg } });
   }
 });
 
-// PUT descrição (api_version=2) — agora com extração da posição do erro
 app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
@@ -685,29 +697,19 @@ app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
     const { data } = await ml.put(`/items/${encodeURIComponent(req.params.id)}/description`, { plain_text }, { params });
     res.json({ ok: true, id: req.params.id, result: data || {} });
   } catch (err) {
-    // tenta achar "plain_text[123]" dentro da mensagem do ML
     const raw = err?.response?.data;
     const text = typeof raw === 'string' ? raw : JSON.stringify(raw || {});
     const match = /plain_text\[(\d+)\]/.exec(text);
     const position = match ? Number(match[1]) : null;
     res.status(422).json({
       ok: false,
-      error: {
-        code: 'validation_error',
-        message: text,
-        field: position != null ? 'plain_text' : undefined,
-        position
-      }
+      error: { code: 'validation_error', message: text, field: position != null ? 'plain_text' : undefined, position }
     });
   }
 });
 
-
 // -------------------- PEDIDOS --------------------
-const ordersCache = {
-  syncedAt: 0,
-  items: [] // { order, shipping, shipping_group }
-};
+const ordersCache = { syncedAt: 0, items: [] }; // { order, shipping, shipping_group }
 
 async function getSellerId(req) {
   if (req.session.user_id) return req.session.user_id;
@@ -762,8 +764,6 @@ function computeStats(items) {
   }
   return stats;
 }
-
-// Helpers de DATA (padrão último 90d; janelas de 30d)
 function toISOAtBoundary(d, endOfDay = false) {
   const dt = new Date(d);
   if (endOfDay) dt.setUTCHours(23, 59, 59, 999);
@@ -787,7 +787,6 @@ function* dateWindows(from, to, windowDays = 30) {
     end = new Date(startMs - 1);
   }
 }
-// Escolhe quais filtros de data aplicar
 function dateFilterKeys(basis) {
   const b = String(basis || 'created');
   if (b === 'updated') return ['order.date_last_updated.from', 'order.date_last_updated.to'];
@@ -795,8 +794,85 @@ function dateFilterKeys(basis) {
   return ['order.date_created.from',     'order.date_created.to']; // default
 }
 
-// Sincroniza por janelas de data (clássico)
-app.post('/api/orders/sync', ensureAccessToken, async (req, res) => {
+// ===== Detalhes de PACK: orders + itens + foto/sku + preço vencedor =====
+app.get('/api/packs/:packId/orders', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { packId } = req.params;
+
+    // 1) Quais orders estão no pack
+    const { data: pack } = await ml.get(`/packs/${encodeURIComponent(packId)}`);
+    const orderIds = (pack?.orders || []).map(o => o.id);
+
+    // 2) Baixa cada order
+    const orders = [];
+    for (const id of orderIds) {
+      const { data: od } = await ml.get(`/orders/${id}`);
+      orders.push(od);
+    }
+
+    // 3) Colete ids de item e puxe detalhes + thumbnail
+    const itemIds = Array.from(new Set(
+      orders.flatMap(o => (o?.order_items || []).map(oi => oi.item?.id)).filter(Boolean)
+    ));
+
+    const itemsExtra = new Map();
+    for (let i = 0; i < itemIds.length; i += 20) {
+      const slice = itemIds.slice(i, i + 20);
+      const { data } = await ml.get('/items', {
+        params: { ids: slice.join(','), attributes: 'id,title,thumbnail,permalink,attributes,seller_custom_field' }
+      });
+      const arr = Array.isArray(data) ? data : [];
+      for (const row of arr) if (row?.code === 200 && row.body) itemsExtra.set(row.body.id, row.body);
+    }
+
+    // 4) Preço de venda vencedor por item (sale_price com contexto marketplace)
+    async function fetchSalePrice(id) {
+      try {
+        const { data } = await ml.get(`/items/${id}/sale_price`, { params: { context: 'channel_marketplace' } });
+        return data || null;
+      } catch { return null; }
+    }
+
+    // 5) Monte payload amigável p/ o front (um card por order_item)
+    const outOrders = [];
+    for (const od of orders) {
+      const arr = [];
+      for (const oi of (od?.order_items || [])) {
+        const itId = oi?.item?.id;
+        const extra = itId ? itemsExtra.get(itId) : null;
+        const skuAttr = Array.isArray(extra?.attributes)
+          ? (extra.attributes.find(a => a?.id === 'SELLER_SKU')?.value_name || null) : null;
+        const sale = itId ? await fetchSalePrice(itId) : null;
+        arr.push({
+          id: itId,
+          title: oi?.item?.title || extra?.title || null,
+          quantity: oi?.quantity,
+          unit_price: oi?.unit_price,
+          currency_id: od?.currency_id || 'BRL',
+          seller_custom_field: extra?.seller_custom_field || null,
+          seller_sku: skuAttr,
+          thumbnail: extra?.thumbnail || null,
+          permalink: extra?.permalink || null,
+          sale_price: sale
+        });
+      }
+      outOrders.push({ id: od.id, date_created: od.date_created, status: od.status, items: arr });
+    }
+
+    res.json({
+      ok: true,
+      pack_id: pack?.id || packId,
+      status: pack?.status || null,
+      orders: outOrders
+    });
+  } catch (err) {
+    res.status(500).send(`Erro ao enriquecer pack: ${JSON.stringify({ status: err?.response?.status, data: err?.response?.data })}`);
+  }
+});
+
+// Sincronização por janelas via HTTP (agora GET/POST)
+app.all('/api/orders/sync', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
     const sellerId = await getSellerId(req);
@@ -839,6 +915,7 @@ app.post('/api/orders/sync', ensureAccessToken, async (req, res) => {
       ok: true,
       total: ordersCache.items.length,
       stats,
+      items: ordersCache.items, // <-- devolve a lista para a página de Pós-venda
       syncedAt: ordersCache.syncedAt,
       range: { from: from.toISOString(), to: to.toISOString(), windowDays: Math.max(1, Math.min(31, Number(windowDays))) },
       basis
@@ -866,7 +943,7 @@ app.get('/api/orders/page', ensureAccessToken, (req, res) => {
 
   arr = [...arr].sort((a, b) => {
     const ad = a.order.date_closed || a.order.date_created || '';
-    const bd = b.order.date_closed || b.order.date_created || '';
+       const bd = b.order.date_closed || b.order.date_created || '';
     return (bd || '').localeCompare(ad || '');
   });
 

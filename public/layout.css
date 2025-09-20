@@ -324,3 +324,66 @@ html[data-theme="dark"] .badge-status.muted { background-color: #334155; }
 
 /* Evita quebra de texto nos botões longos */
 .topbar .actions .btn { white-space: nowrap; }
+/* ==== Toggle moderno (switch) ==== */
+.switch { display:inline-flex; align-items:center; gap:10px; cursor:pointer; user-select:none }
+.switch input { display:none }
+.switch .slider {
+  width:44px; height:24px; border-radius:999px; background:rgba(255,255,255,.15);
+  position:relative; transition:background .2s ease; border:1px solid var(--border);
+}
+.switch .slider::after {
+  content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+  background:#fff; transition:transform .2s ease;
+}
+.switch input:checked + .slider { background: color-mix(in oklab, var(--brand) 65%, transparent); }
+.switch input:checked + .slider::after { transform:translateX(20px) }
+.switch .lbl { font-size:14px; opacity:.85 }
+
+/* ==== Composer / Controles genéricos ==== */
+.icon-btn {
+  width:38px; height:38px; border:1px solid var(--border); background:var(--surface);
+  border-radius:12px; display:inline-grid; place-items:center; cursor:pointer;
+}
+.composer { display:flex; gap:8px; align-items:flex-end; margin-top:12px }
+.composer textarea {
+  flex:1; min-height:56px; max-height:160px; resize:none; border-radius:14px; padding:12px 14px;
+}
+#charRow { display:flex; align-items:center; gap:8px; margin-top:6px }
+#chips { display:flex; gap:6px; flex-wrap:wrap }
+.chip button { border:0; background:transparent; cursor:pointer; color:var(--muted) }
+.chip button:hover { color:var(--text) }
+
+/* Garantias gerais */
+[hidden] { display: none !important; }         /* força esconder qualquer coisa com hidden */
+.topbar .actions { flex-wrap: nowrap; }        /* mantêm tudo em uma linha */
+#top-actions-unauthed, #top-actions-authed { display: contents; } /* wrappers não criam caixas */
+.topbar .actions form { display: inline; }
+.topbar .actions .btn { white-space: nowrap; }
+/* ===== FIX composer (mensagens) ===== */
+/* Não deixe o select/inputs ocuparem 100% dentro do flex */
+.composer .input,
+.composer select {
+  width: auto !important;
+  flex: 0 0 auto;
+  min-width: 220px;          /* cabe o rótulo do Action Guide */
+  max-width: 40vw;           /* não deixa crescer demais em telas largas */
+}
+
+/* O textarea deve ocupar o resto, com altura confortável */
+.composer textarea,
+.composer textarea.input {
+  flex: 1 1 auto !important;
+  min-width: 0;              /* permite encolher corretamente dentro do flex */
+  width: 100%;
+  max-width: 100%;
+  min-height: 56px;
+  max-height: 160px;
+  resize: none;              /* auto-resize pelo JS */
+  overflow-y: auto;
+}
+
+/* Garante que os botões não deformem o layout */
+.composer .icon-btn,
+.composer .btn {
+  flex: 0 0 auto;
+}

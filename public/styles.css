@@ -102,3 +102,35 @@ textarea.input { min-height: 100px; resize: vertical; }
   .side { display: none; }
   .col-6, .col-4, .col-3 { grid-column: span 12; }
 }
+/* ===== Pós-venda: shell 3 colunas ===== */
+.ps-shell { display:grid; grid-template-columns: 320px 1fr 340px; gap:16px; }
+.ps-list .packs { overflow:auto; max-height: calc(100vh - 260px); display:flex; flex-direction:column; gap:8px; }
+.pack-card { border:1px solid var(--border); background:var(--surface); border-radius:12px; padding:10px; cursor:pointer; }
+.pack-card.active { outline:2px solid var(--brand); outline-offset: 0; }
+.row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+.grow{ flex:1 }
+.muted2{ opacity:.7 }
+.badge { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:2px 8px; border:1px solid var(--border); font-size:12px; }
+.badge.ok{ background:rgba(46,204,113,.12) }
+.badge.warn{ background:rgba(241,196,15,.12) }
+.badge.err{ background:rgba(231,76,60,.12) }
+
+/* ===== Chat ===== */
+.thread { border:1px solid var(--border); border-radius:12px; padding:12px; background:var(--surface); min-height:360px; }
+.bubble { max-width:78%; border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin:10px 0; position:relative }
+.bubble .meta{ font-size:12px; opacity:.7; margin-bottom:4px }
+.bubble.them{ background: color-mix(in oklab, var(--surface) 90%, #000 10%) }
+.bubble.me  { background: color-mix(in oklab, var(--brand) 12%, var(--surface)); margin-left:auto }
+
+/* ===== Painel de detalhes ===== */
+.details .prod-card { display:flex; gap:12px; border:1px solid var(--border); background:var(--surface); border-radius:12px; padding:10px }
+.details .prod-card img{ width:56px; height:56px; object-fit:cover; border-radius:10px; border:1px solid var(--border) }
+.details .kv{ display:grid; grid-template-columns: auto 1fr; gap:4px 10px; font-size:14px; }
+.details .kv .k{ color:var(--muted) }
+
+/* ===== Responsivo ===== */
+@media (max-width: 1180px) {
+  .ps-shell { grid-template-columns: 1fr; }
+  .ps-list { order: 1; }
+  .details { order: 3; }
+}
