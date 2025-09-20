@@ -5,27 +5,38 @@
   <title>Anúncios</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="/layout.css" rel="stylesheet" />
+  <style>
+    /* empurra ações do topo para a borda direita do header */
+    .topbar .container { display:flex; align-items:center; gap:16px; }
+    .topbar .brand { display:flex; align-items:center; gap:12px; }
+    .topbar .top-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+    /* garante o botão da direita do card alinhado à borda do card */
+    .panel-header { display:flex; align-items:center; justify-content:space-between; }
+    .panel-header .panel-actions { margin-left:auto; }
+  </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <a class="brand-link" href="/" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        Voltar
-      </a>
-      <h1 style="margin:0;">Anúncios</h1>
-    </div>
+    <div class="container">
+      <div class="brand">
+        <a class="brand-link" href="/" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Voltar
+        </a>
+        <h1 style="margin:0;">Anúncios</h1>
+      </div>
 
-    <div class="top-actions">
-      <span id="top-actions-unauthed">
-        <button class="btn primary" id="loginBtn">Entrar</button>
-      </span>
-      <span id="top-actions-authed" hidden>
-        <button class="btn" id="refreshBtn">Renovar token</button>
-        <form method="post" action="/logout" style="display:inline;">
-          <button class="btn" type="submit">Sair</button>
-        </form>
-      </span>
+      <div class="top-actions">
+        <span id="top-actions-unauthed">
+          <button class="btn primary" id="loginBtn">Entrar</button>
+        </span>
+        <span id="top-actions-authed" hidden>
+          <button class="btn" id="refreshBtn">Renovar token</button>
+          <form method="post" action="/logout" style="display:inline;">
+            <button class="btn" type="submit">Sair</button>
+          </form>
+        </span>
+      </div>
     </div>
   </header>
 
@@ -43,7 +54,7 @@
       <div class="panel">
         <div class="panel-header">
           <h2>Busca de Anúncios</h2>
-          <div class="panel-actions" style="display:flex;gap:8px;">
+          <div class="panel-actions">
             <button id="syncBtn" class="btn">Sincronizar por Stream</button>
             <button id="cancelBtn" class="btn danger" style="display:none">Cancelar</button>
           </div>

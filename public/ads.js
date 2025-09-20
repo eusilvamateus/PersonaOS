@@ -138,22 +138,27 @@ async function doSearch() {
   const params = new URLSearchParams();
   if (q) params.set('q', q);
   if (status) params.set('status', status);
-  if (category) params.set('category', category);
+  // backend espera category_id
+  if (category) params.set('category_id', category);
   if (free) params.set('free_shipping', 'true');
   if (sort) params.set('sort', sort);
   params.set('limit', String(PAGE_SIZE));
   params.set('page', '1');
+  // peça enriquecimento completo e preço promocional
+  params.set('include', 'details,sale_price');
 
   progressStart('Buscando anúncios…', 15);
   try {
     const res = await fetch(`/api/ads/search?${params.toString()}`, {
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
       credentials: 'same-origin'
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
     state.search.items = Array.isArray(data.items) ? data.items : [];
-    state.search.total = Number(data.total || state.search.items.length || 0);
+    // usar paging.total quando fornecido
+    state.search.total = Number(data?.paging?.total ?? state.search.items.length ?? 0);
     state.search.page = 1;
 
     renderTable();
@@ -182,11 +187,18 @@ function renderTable() {
     const status = it.status || it.listing_status || '';
     const sold = it.sold_quantity ?? it.sold ?? 0;
     const permalink = it.permalink || it.perma_link || '';
-    const price = it.sale_price && it.sale_price > 0 ? it.sale_price : it.price;
-    const hasSale = it.sale_price && it.sale_price > 0 && Number(it.price) !== Number(it.sale_price);
+
+    // sale_price pode ser objeto { amount, regular_amount, ... } ou número legado
+    const sp = it && typeof it.sale_price === 'object' ? it.sale_price : null;
+    const saleAmount = sp?.amount ?? (typeof it.sale_price === 'number' ? it.sale_price : null);
+    const regular = sp?.regular_amount ?? null;
+
+    const basePrice = Number(it.price ?? 0);
+    const price = saleAmount != null && Number(saleAmount) > 0 ? Number(saleAmount) : basePrice;
+    const hasSale = regular != null && Number(regular) > Number(price);
 
     const priceHtml = hasSale
-      ? `<div><strong>${fmtBRL(price)}</strong> <span class="muted" style="text-decoration:line-through;opacity:.8;margin-left:6px">${fmtBRL(it.price)}</span></div>`
+      ? `<div><strong>${fmtBRL(price)}</strong> <span class="muted" style="text-decoration:line-through;opacity:.8;margin-left:6px">${fmtBRL(regular)}</span></div>`
       : `<div>${fmtBRL(price)}</div>`;
 
     const titleHtml = permalink
@@ -209,7 +221,7 @@ function renderTable() {
 
   tbody.innerHTML = rows.join('\n');
 
-  // Bind ação de descrição
+  // bind da ação de descrição
   $$('#tbody [data-act="desc"]').forEach((btn) => {
     btn.addEventListener('click', () => openDescription(btn.getAttribute('data-id')));
   });
@@ -237,7 +249,7 @@ async function openDescription(itemId) {
   progressStart('Carregando descrição…', 20);
   try {
     const res = await fetch(`/api/items/${encodeURIComponent(itemId)}/description`, {
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
       credentials: 'same-origin'
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -267,7 +279,7 @@ async function saveDescription() {
   try {
     const res = await fetch(`/api/items/${encodeURIComponent(itemId)}/description`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify(body)
     });
@@ -317,48 +329,57 @@ function startStreamSync() {
     progressUpdate(10, 'Conexão aberta…');
   });
 
-  state.es.addEventListener('message', (evt) => {
-    if (!evt?.data) return;
-    let data;
-    try { data = JSON.parse(evt.data); } catch { return; }
+  // ouvir eventos nomeados emitidos pelo backend
+  state.es.addEventListener('meta', (evt) => {
+    try {
+      const data = JSON.parse(evt.data || '{}');
+      const total = Number(data.total_ids ?? data.total ?? 0);
+      state.expected = total;
+      if (total > 0) progressUpdate(12, `Total previsto: ${total}`);
+    } catch {}
+  });
 
-    // Protocolo flexível: aceitamos keys comuns
-    if (typeof data.total === 'number') {
-      state.expected = data.total;
-      progressUpdate(12, `Total previsto: ${data.total}`);
-    }
-    if (typeof data.processed === 'number' && state.expected > 0) {
-      const pct = Math.max(0, Math.min(100, Math.round((data.processed / state.expected) * 100)));
-      progressUpdate(pct, `Processados ${data.processed}/${state.expected}`);
-    }
-    if (data.item) {
-      // opcional: enriquecer a UI quando vier item a item
-      // por padrão não inserimos dinamicamente para evitar flicker
-    }
-    if (data.done || data.finished) {
-      progressFinish('Sincronização concluída');
-      stopStreamSync(false);
-      // dica: recarregar busca após concluir
-      if (($('#adsQ')?.value || '').length || $('#adsStatus')?.value || $('#adsCategory')?.value) {
-        doSearch().catch(() => {});
+  state.es.addEventListener('progress', (evt) => {
+    try {
+      const data = JSON.parse(evt.data || '{}');
+      const total = Number(data.total ?? state.expected ?? 0);
+      const sent = Number(data.sent ?? 0);
+      if (total > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
+        progressUpdate(pct, `Processados ${sent}/${total}`);
       }
-    }
-    if (data.error) {
-      toast(`Erro no stream: ${data.error}`);
-      progressError('Erro durante o stream');
-      stopStreamSync(true);
-    }
-    if (data.message && !data.done && !data.error) {
-      // mensagens informativas do servidor
-      progressUpdate(undefined, String(data.message));
+    } catch {}
+  });
+
+  state.es.addEventListener('batch', () => {
+    // opcional: atualizar UI incremental com pacotes
+  });
+
+  state.es.addEventListener('done', () => {
+    progressFinish('Sincronização concluída');
+    stopStreamSync(false);
+    // refazer busca se há filtros preenchidos
+    if (($('#adsQ')?.value || '').length || $('#adsStatus')?.value || $('#adsCategory')?.value) {
+      doSearch().catch(() => {});
     }
   });
 
-  state.es.addEventListener('error', (e) => {
-    console.error('SSE error', e);
+  // erro de rede
+  state.es.addEventListener('error', (evt) => {
+    console.error('SSE error', evt);
     toast('Conexão de stream encerrada');
     progressError('Conexão encerrada');
     stopStreamSync(true);
+  });
+
+  // também tratar um possível evento nomeado "error" vindo do servidor
+  state.es.addEventListener('error', (evt) => {
+    try {
+      const data = JSON.parse(evt.data || '{}');
+      if (data?.message || data?.detail) {
+        toast(`Erro no stream: ${data.message || 'erro'}`);
+      }
+    } catch {}
   });
 }
 
@@ -391,12 +412,11 @@ function bindUi() {
   $('#descSaveBtn')?.addEventListener('click', saveDescription);
   $('#descCloseBtn')?.addEventListener('click', closeDescription);
 
-  // Ações de autenticação do topo podem ser tratadas por /app.js
+  // ações de autenticação do topo podem ser tratadas por /app.js
 }
 
 // ===== Inicialização =====
 document.addEventListener('DOMContentLoaded', () => {
   bindUi();
-  // opcional: carregar lista inicial em branco, aguardar ação do usuário
-  // doSearch();
+  // doSearch(); // se quiser carregar algo ao abrir a página
 });
