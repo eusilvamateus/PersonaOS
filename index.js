@@ -68,8 +68,8 @@ function consumeFlash(req) {
 
 // -------------------- Middlewares --------------------
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(helmet());
 app.use(rateLimit({ windowMs: 60 * 1000, max: 90 }));
 app.set('trust proxy', 1);
@@ -82,7 +82,10 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Upload local para repassar ao ML
-const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
+const upload = multer({
+   storage: multer.memoryStorage(),
+   limits: { fileSize: 25 * 1024 * 1024 } // 25 MB
+});
 
 // -------------------- Páginas --------------------
 app.get('/', async (req, res) => {
@@ -483,7 +486,11 @@ async function fetchItemDetails(ml, ids, attributes) {
 app.get('/api/items/all', ensureAccessToken, async (req, res) => {
   try {
     const ml = mlFor(req);
-    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+    const include = String(req.query.include || ''); // ex: images,variations
+    let attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,secure_thumbnail,status,last_updated';
+    if (include.includes('images') && !attributes.includes('pictures')) attributes += ',pictures';
+    if (include.includes('variations') && !attributes.includes('variations')) attributes += ',variations';
+
     const ids = await collectAllItemIds(req, ml);
     const items = await fetchItemDetails(ml, ids, attributes);
     res.json({ total: items.length, attributes, items });
@@ -504,7 +511,10 @@ app.get('/api/items/all/stream', ensureAccessToken, async (req, res) => {
     let closed = false;
     req.on('close', () => { closed = true; clearInterval(ping); });
 
-    const attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+    const include = String(req.query.include || '');
+    let attributes = req.query.attributes || 'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,secure_thumbnail,status,last_updated';
+    if (include.includes('images') && !attributes.includes('pictures')) attributes += ',pictures';
+    if (include.includes('variations') && !attributes.includes('variations')) attributes += ',variations';
 
     const ids = await collectAllItemIds(req, ml);
     if (closed) return;
@@ -611,8 +621,14 @@ app.get('/api/ads/search', ensureAccessToken, async (req, res) => {
     const needDetails = wants.includes('details') || (source === 'sites' && status);
 
     if (needDetails && ids.length) {
+      // atributos para a lista (com secure_thumbnail por padrão)
       let attrs = attributes ||
-        'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,status,last_updated';
+        'id,title,price,available_quantity,sold_quantity,permalink,thumbnail,secure_thumbnail,status,last_updated';
+      // opcionais conforme include=...
+      const wantsImages = wants.includes('images');
+      const wantsVariations = wants.includes('variations');
+      if (wantsImages && !attrs.split(',').includes('pictures')) attrs += ',pictures';
+      if (wantsVariations && !attrs.split(',').includes('variations')) attrs += ',variations';
       if (!attrs.split(',').includes('status')) attrs += ',status';
 
       for (let i = 0; i < ids.length; i += 20) {
@@ -705,6 +721,35 @@ app.put('/api/items/:id/description', ensureAccessToken, async (req, res) => {
       ok: false,
       error: { code: 'validation_error', message: text, field: position != null ? 'plain_text' : undefined, position }
     });
+  }
+});
+
+/* ===== NOVAS ROTAS para hidratação de imagens/variações ===== */
+// Item completo (passa-through attributes)
+app.get('/api/items/:id', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { attributes } = req.query;
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}`, {
+      params: attributes ? { attributes } : undefined
+    });
+    res.json(data || {});
+  } catch (err) {
+    res.status(500).json({ ok:false, error:{ code:'item_fetch_failed', message: fmtErr(err) }});
+  }
+});
+
+// Variações (com pictures para mapear picture_ids → secure_url)
+app.get('/api/items/:id/variations', ensureAccessToken, async (req, res) => {
+  try {
+    const ml = mlFor(req);
+    const { data } = await ml.get(`/items/${encodeURIComponent(req.params.id)}`, {
+      params: { attributes: 'variations,pictures,thumbnail,secure_thumbnail' }
+    });
+    const variations = Array.isArray(data?.variations) ? data.variations : [];
+    res.json(variations);
+  } catch (err) {
+    res.status(500).json({ ok:false, error:{ code:'variations_fetch_failed', message: fmtErr(err) }});
   }
 });
 

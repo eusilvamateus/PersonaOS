@@ -53,6 +53,10 @@ function autoresizeTextArea(el){
   el.style.height = 'auto';
   el.style.height = Math.min(160, Math.max(56, el.scrollHeight)) + 'px';
 }
+function scrollThreadToBottom(){
+  const t = $('#thread');
+  if (t) t.scrollTop = t.scrollHeight;
+}
 
 /* ===== Pedidos + Mensagens ===== */
 async function syncOrders() {
@@ -166,6 +170,7 @@ async function openPack(packId){
     </div>`;
   }).join('');
   $('#thread') && ($('#thread').innerHTML = html || `<div class="muted">Sem mensagens.</div>`);
+  scrollThreadToBottom();
 
   await loadActionGuide(packId);
 
@@ -335,7 +340,8 @@ $('#sendBtn')?.addEventListener('click', async ()=>{
     toast('Mensagem enviada');
     const ta=$('#msgText'); if(ta){ ta.value=''; updateCharCount(); }
     state.attachments.length=0; $('#chips') && ($('#chips').innerHTML='');
-    openPack(packId); // recarrega thread
+    await openPack(packId); // recarrega thread e autoscroll
+    scrollThreadToBottom();
   }catch{
     toast('Falha ao enviar');
   }

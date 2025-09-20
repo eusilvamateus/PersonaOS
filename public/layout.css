@@ -846,6 +846,7 @@ html[data-theme="dark"] .badge-status.info {
 }
 
 /* --- Composer Fix --- */
+.composer{ min-width: 0; } 
 .composer .input,
 .composer select {
   width: auto !important;
@@ -913,7 +914,10 @@ html[data-theme="dark"] .badge-status.info {
 /* --- Focus Improvements for Accessibility --- */
 .btn:focus-visible,
 .input:focus-visible,
-.chip:focus-visible {
+.chip:focus-visible
+.pack-card:focus-visible{
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }

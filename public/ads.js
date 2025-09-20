@@ -144,8 +144,8 @@ async function doSearch() {
   if (sort) params.set('sort', sort);
   params.set('limit', String(PAGE_SIZE));
   params.set('page', '1');
-  // peça enriquecimento completo e preço promocional
-  params.set('include', 'details,sale_price');
+  // incluir imagens na busca para reduzir hidratação
+  params.set('include', 'details,sale_price,images');
 
   progressStart('Buscando anúncios…', 15);
   try {
@@ -168,6 +168,150 @@ async function doSearch() {
     toast('Falha ao buscar anúncios');
     progressError('Falha ao buscar anúncios');
   }
+}
+
+// ===== Helpers de imagem/variações =====
+function fixImageUrl(u) {
+  if (!u) return '';
+  return String(u).replace(/^http:\/\//i, 'https://');
+}
+function thumbFromItem(it) {
+  // Capa do item: secure_thumbnail > thumbnail > primeira picture
+  return fixImageUrl(
+    it?.secure_thumbnail ||
+      it?.thumbnail ||
+      it?.pictures?.[0]?.secure_url ||
+      it?.pictures?.[0]?.url ||
+      ''
+  );
+}
+function mapPictureIdsToUrls(item) {
+  const map = new Map();
+  (item?.pictures || []).forEach((p) => {
+    if (p?.id) map.set(String(p.id), fixImageUrl(p.secure_url || p.url || ''));
+  });
+  return map;
+}
+function formatVariationLabel(v) {
+  // monta "Cor: Preto • Tamanho: 42" (quando existir)
+  const parts = (v?.attribute_combinations || []).map((a) => {
+    const k = a?.name || a?.id || '';
+    const val = a?.value_name || a?.value_id || '';
+    return `${k}: ${val}`.trim();
+  });
+  return parts.join(' • ') || `Variação ${v?.id || ''}`.trim();
+}
+
+// Garante contêineres dentro do painel de descrição para mídia e variações
+function ensureDescMediaContainers() {
+  const ta = $('#descText');
+  if (!ta || !ta.parentElement) return { media: null, grid: null };
+
+  let media = $('#descMedia');
+  if (!media) {
+    media = document.createElement('div');
+    media.id = 'descMedia';
+    media.className = 'tiny';
+    media.style.margin = '8px 0 12px';
+    ta.parentElement.insertBefore(media, ta); // mídia fica acima do textarea
+  }
+
+  let grid = $('#variationsGrid');
+  if (!grid) {
+    grid = document.createElement('div');
+    grid.id = 'variationsGrid';
+    Object.assign(grid.style, {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+      gap: '10px',
+      marginTop: '8px'
+    });
+    ta.parentElement.appendChild(grid); // grid de variações abaixo do textarea
+  }
+
+  return { media, grid };
+}
+
+async function loadItemMedia(itemId) {
+  // Tenta pegar variações + pictures num único request (proxy passa query em frente)
+  let item = null;
+  try {
+    const r1 = await fetch(
+      `/api/items/${encodeURIComponent(itemId)}?attributes=variations,pictures,thumbnail,secure_thumbnail`,
+      { headers: { Accept: 'application/json' }, credentials: 'same-origin' }
+    );
+    if (r1.ok) {
+      item = await r1.json();
+    }
+  } catch {}
+
+  // fallback: busca variações e depois o item completo
+  if (!item || (!item.pictures && !item.variations)) {
+    try {
+      const [vRes, iRes] = await Promise.all([
+        fetch(`/api/items/${encodeURIComponent(itemId)}/variations`, {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin'
+        }),
+        fetch(`/api/items/${encodeURIComponent(itemId)}`, {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin'
+        })
+      ]);
+      const variations = vRes.ok ? await vRes.json().catch(() => []) : [];
+      const baseItem = iRes.ok ? await iRes.json().catch(() => null) : null;
+      item = baseItem || {};
+      if (Array.isArray(variations)) item.variations = variations;
+    } catch {}
+  }
+
+  const { media, grid } = ensureDescMediaContainers();
+  if (!media || !grid) return;
+
+  // Render capa do item
+  const cover = thumbFromItem(item) || '';
+  media.innerHTML = cover
+    ? `<div class="row" style="align-items:center; gap:10px">
+         <img src="${cover}" alt="Capa do anúncio" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"/>
+         <div class="tiny muted2">Capa do anúncio</div>
+       </div>`
+    : `<div class="tiny muted2">Sem imagem de capa do anúncio.</div>`;
+
+  // Render grid de variações (cada uma com sua capa)
+  grid.innerHTML = '';
+  const variations = Array.isArray(item?.variations) ? item.variations : [];
+  if (!variations.length) {
+    grid.innerHTML = `<div class="muted tiny">Este anúncio não possui variações.</div>`;
+    return;
+  }
+
+  const idToUrl = mapPictureIdsToUrls(item);
+  const cards = variations.map((v) => {
+    // picture_ids pode conter IDs (que mapeiam em item.pictures) ou URLs diretas
+    let pic = '';
+    const picId = (v?.picture_ids || [])[0];
+    if (picId) {
+      if (/^https?:\/\//i.test(picId)) pic = fixImageUrl(picId);
+      else pic = idToUrl.get(String(picId)) || cover || '';
+    } else {
+      pic = cover || '';
+    }
+    const label = formatVariationLabel(v);
+    const vid = v?.id ? `#${v.id}` : '';
+    return `
+      <div class="panel" style="padding:8px">
+        <div class="row" style="align-items:center; gap:10px">
+          <img src="${pic}" alt="Capa da variação ${vid}" onerror="this.style.visibility='hidden'"
+               style="width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"/>
+          <div class="grow">
+            <div style="font-weight:600; font-size:14px">${label || 'Variação'}</div>
+            <div class="tiny muted2">${vid}</div>
+          </div>
+        </div>
+      </div>
+    `.trim();
+  });
+  grid.innerHTML = cards.join('\n');
 }
 
 // ===== Renderização da Tabela =====
@@ -205,9 +349,23 @@ function renderTable() {
       ? `<a href="${permalink}" target="_blank" rel="noopener">${escapeHtml(title)}</a>`
       : escapeHtml(title);
 
+    // miniatura no título (sem alterar cabeçalho/colunas)
+    const thumb = thumbFromItem(it);
+    const titleWithThumb = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <img class="ad-thumb" data-id="${escapeAttr(id)}"
+             ${thumb ? `src="${thumb}"` : ''} referrerpolicy="no-referrer"
+             alt="Foto" onerror="this.style.visibility='hidden'"
+             style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border)" />
+        <div>
+          <div>${titleHtml}</div>
+          <div class="tiny muted2">${escapeHtml(String(id))}</div>
+        </div>
+      </div>`;
+
     return `
       <tr>
-        <td>${titleHtml}</td>
+        <td>${titleWithThumb}</td>
         <td>${priceHtml}</td>
         <td>${Number(sold || 0)}</td>
         <td>${escapeHtml(status)}</td>
@@ -225,6 +383,32 @@ function renderTable() {
   $$('#tbody [data-act="desc"]').forEach((btn) => {
     btn.addEventListener('click', () => openDescription(btn.getAttribute('data-id')));
   });
+
+  // preenche thumbs ausentes (quando a busca não trouxe imagens)
+  hydrateThumbs();
+}
+
+// carrega thumbs que faltaram (busca 1x o item e injeta a imagem)
+async function hydrateThumbs() {
+  const imgs = $$('#tbody img.ad-thumb[data-id]');
+  await Promise.all(
+    imgs.map(async (img) => {
+      if (img.getAttribute('src')) return; // já tem
+      const id = img.dataset.id;
+      try {
+        const r = await fetch(
+          `/api/items/${encodeURIComponent(id)}?attributes=secure_thumbnail,thumbnail,pictures`,
+          { headers: { Accept: 'application/json' }, credentials: 'same-origin' }
+        );
+        if (!r.ok) return;
+        const it = await r.json();
+        const url =
+          thumbFromItem(it) ||
+          fixImageUrl(it?.pictures?.[0]?.secure_url || it?.pictures?.[0]?.url);
+        if (url) img.src = url;
+      } catch {}
+    })
+  );
 }
 
 function escapeHtml(s) {
@@ -259,6 +443,10 @@ async function openDescription(itemId) {
     state.editingId = itemId;
     panel.hidden = false;
     textarea.focus();
+
+    // carrega capa do item + variações com suas capas (via pictures/picture_ids)
+    await loadItemMedia(itemId);
+
     progressFinish('Descrição carregada');
   } catch (err) {
     console.error('Erro ao carregar descrição', err);
@@ -300,6 +488,9 @@ function closeDescription() {
   if (panel) panel.hidden = true;
   if (textarea) textarea.value = '';
   state.editingId = null;
+  // limpa mídia/variações quando fecha
+  $('#descMedia')?.remove();
+  $('#variationsGrid')?.remove();
 }
 
 // ===== Sincronização por Stream (SSE) =====
@@ -411,6 +602,14 @@ function bindUi() {
 
   $('#descSaveBtn')?.addEventListener('click', saveDescription);
   $('#descCloseBtn')?.addEventListener('click', closeDescription);
+
+  // ESC fecha o painel de descrição, se aberto
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const panel = $('#descPanel');
+      if (panel && !panel.hidden) closeDescription();
+    }
+  });
 
   // ações de autenticação do topo podem ser tratadas por /app.js
 }
