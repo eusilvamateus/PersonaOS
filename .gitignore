@@ -5,4 +5,4 @@ tokens.json
 .env
 # Sistema operacional e IDE
 .vscode/
-node_modules
+node_modules/
