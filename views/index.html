@@ -2,24 +2,25 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <title>Mercado Livre | Integração</title>
+  <title>Mercado Livre | Integração Moderna</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Plataforma moderna para integração com APIs do Mercado Livre - gerencie pedidos, anúncios e pós-venda de forma elegante e eficiente" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="/layout.css" rel="stylesheet" />
   <link href="/styles.css" rel="stylesheet" />
-  <style>
-    /* ajustes de alinhamento do topo */
-    .topbar .container{display:flex;align-items:center;gap:16px}
-    .topbar .brand{display:flex;align-items:center;gap:12px}
-    .topbar .top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
-    .panel-header{display:flex;align-items:center;justify-content:space-between}
-    .panel-header .panel-actions{margin-left:auto}
-  </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="container"><!-- NOVO wrapper -->
+    <div class="container">
       <div class="brand">
-        <div class="logo">💬</div>
+        <div class="logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            <path d="M8 10h.01M12 10h.01M16 10h.01"></path>
+          </svg>
+        </div>
         <div>
           <div>Mercado Livre</div>
           <div class="muted">Mensagens & Pós-venda</div>
@@ -28,11 +29,13 @@
 
       <div class="top-actions">
         <span id="top-actions-unauthed">
-          <button class="btn primary" id="loginBtn">Entrar</button>
+          <button class="btn primary" id="loginBtn" data-testid="button-login">Entrar</button>
         </span>
         <span id="top-actions-authed" hidden>
-          <button class="btn" id="refreshBtn">Renovar token</button>
-          <form method="post" action="/logout"><button class="btn" type="submit">Sair</button></form>
+          <button class="btn" id="refreshBtn" data-testid="button-refresh">Renovar token</button>
+          <form method="post" action="/logout">
+            <button class="btn" type="submit" data-testid="button-logout">Sair</button>
+          </form>
         </span>
       </div>
     </div>
@@ -42,46 +45,129 @@
     <aside class="side">
       <h3>Navegação</h3>
       <nav class="nav">
-        <a href="#sec-auth">🔐 Autenticação</a>
-        <a href="/post-sale">📬 Pós-venda</a><!-- NOVO -->
-        <a href="/ads">📈 Anúncios</a>
-        <a href="/orders">🧾 Pedidos</a>
+        <a href="#sec-auth" data-testid="link-auth">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <circle cx="12" cy="16" r="1"></circle>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          Autenticação
+        </a>
+        <a href="/post-sale" data-testid="link-post-sale">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          Pós-venda
+        </a>
+        <a href="/ads" data-testid="link-ads">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="20" x2="12" y2="10"></line>
+            <line x1="18" y1="20" x2="18" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="16"></line>
+          </svg>
+          Anúncios
+        </a>
+        <a href="/orders" data-testid="link-orders">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14,2 14,8 20,8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10,9 9,9 8,9"></polyline>
+          </svg>
+          Pedidos
+        </a>
       </nav>
-      <div id="userChip" class="chip-status"><span class="dot warn"></span> não autenticado</div>
+      <div id="userChip" class="chip-status" data-testid="text-user-status">
+        <span class="dot warn"></span> não autenticado
+      </div>
     </aside>
 
     <main class="content">
       <!-- Destaque para nova tela unificada -->
       <section class="panel" id="sec-postsale-feature">
         <div class="panel-header">
-          <h2>Pós-venda unificado</h2>
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+            </svg>
+            Pós-venda Unificado
+          </h2>
           <div class="panel-actions">
-            <a class="btn primary" href="/post-sale">Abrir Pós-venda</a>
+            <a class="btn primary" href="/post-sale" data-testid="button-open-post-sale">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 11l3 3 8-8"></path>
+                <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.77 0 3.4.51 4.78 1.39"></path>
+              </svg>
+              Abrir Pós-venda
+            </a>
           </div>
         </div>
         <div class="panel-body">
-          <p class="muted">Reunimos <em>Pendentes</em>, <em>Conversas</em>, <em>Enviar Mensagem</em> e <em>Upload de Anexos</em> em uma única tela.</p>
+          <p class="muted">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right: 8px; vertical-align: middle;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 6v6l4 2"></path>
+            </svg>
+            Reunimos <em>Pendentes</em>, <em>Conversas</em>, <em>Enviar Mensagem</em> e <em>Upload de Anexos</em> em uma única tela moderna e intuitiva.
+          </p>
         </div>
       </section>
 
       <!-- Autenticação & Status (mantido na Home) -->
       <section class="panel" id="sec-auth">
-        <div class="panel-header"><h2>Autenticação &amp; Status</h2></div>
-        <div id="auth-success-message" class="auth-status-banner" hidden role="status" aria-live="polite" aria-atomic="true"></div>
+        <div class="panel-header">
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+              <path d="M9 12l2 2 4-4"></path>
+              <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"></path>
+              <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"></path>
+            </svg>
+            Autenticação &amp; Status
+          </h2>
+        </div>
+        <div id="auth-success-message" class="auth-status-banner" hidden role="status" aria-live="polite" aria-atomic="true" data-testid="banner-auth-success"></div>
         <div class="panel-body grid">
           <div class="col-6 field">
             <label>Resposta da API (JSON)</label>
-            <pre class="json" id="statusOut" role="status" aria-live="polite" aria-atomic="true">{ carregando... }</pre>
+            <pre class="json" id="statusOut" role="status" aria-live="polite" aria-atomic="true" data-testid="json-api-response">{ carregando... }</pre>
           </div>
           <div class="col-6 field">
             <label>Ações</label>
             <div id="auth-actions-unauthed" class="actions-group">
-              <button class="btn primary" id="loginBtn2">Iniciar login</button>
-              <button class="btn" id="pasteBtn2">Colar code/state</button>
+              <button class="btn primary" id="loginBtn2" data-testid="button-login-main">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                  <polyline points="10,17 15,12 10,7"></polyline>
+                  <line x1="15" y1="12" x2="3" y2="12"></line>
+                </svg>
+                Iniciar login
+              </button>
+              <button class="btn" id="pasteBtn2" data-testid="button-paste-code">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                </svg>
+                Colar code/state
+              </button>
             </div>
             <div id="auth-actions-authed" class="actions-group" hidden>
-              <button class="btn" id="refreshBtn2">Renovar token</button>
-              <button class="btn" id="statusBtn">Atualizar status</button>
+              <button class="btn" id="refreshBtn2" data-testid="button-refresh-token">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23,4 23,10 17,10"></polyline>
+                  <polyline points="1,20 1,14 7,14"></polyline>
+                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64l1.27 1.27m4.18 4.18L20.49 9z"></path>
+                  <path d="M3.51 15a9 9 0 0 0 14.85 3.36l-1.27-1.27m-4.18-4.18L3.51 15z"></path>
+                </svg>
+                Renovar token
+              </button>
+              <button class="btn" id="statusBtn" data-testid="button-update-status">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
+                </svg>
+                Atualizar status
+              </button>
             </div>
           </div>
         </div>
@@ -93,17 +179,17 @@
         <div class="panel-body grid">
           <div class="col-4 field">
             <label for="role">Seu papel (Role)</label>
-            <select id="role" class="input">
+            <select id="role" class="input" data-testid="select-role">
               <option value="seller">Vendedor (seller)</option>
               <option value="buyer">Comprador (buyer)</option>
             </select>
           </div>
           <div class="col-8 field-action">
-            <button class="btn" id="unreadBtn">Consultar</button>
+            <button class="btn" id="unreadBtn" data-testid="button-check-unread">Consultar</button>
           </div>
           <div class="col-12 field">
             <label>Resposta da API</label>
-            <pre class="json" id="unreadOut"></pre>
+            <pre class="json" id="unreadOut" data-testid="json-unread-response"></pre>
           </div>
         </div>
       </section>
@@ -113,23 +199,26 @@
         <div class="panel-body grid">
           <div class="col-6 field">
             <label for="packId">Pack ID</label>
-            <input id="packId" class="input" placeholder="Ex: 200000..." />
+            <input id="packId" class="input" placeholder="Ex: 200000..." data-testid="input-pack-id" />
           </div>
           <div class="col-3 field">
             <label for="limit">Limite</label>
-            <input id="limit" type="number" class="input" value="10" />
+            <input id="limit" type="number" class="input" value="10" data-testid="input-limit" />
           </div>
           <div class="col-3 field">
             <label for="offset">Offset</label>
-            <input id="offset" type="number" class="input" value="0" />
+            <input id="offset" type="number" class="input" value="0" data-testid="input-offset" />
           </div>
           <div class="col-12 actions-group space-between">
-            <label class="check-label"><input id="markRead" type="checkbox" checked /> Marcar como lidas</label>
-            <button class="btn" id="packBtn">Listar mensagens</button>
+            <label class="check-label">
+              <input id="markRead" type="checkbox" checked data-testid="checkbox-mark-read" /> 
+              Marcar como lidas
+            </label>
+            <button class="btn" id="packBtn" data-testid="button-list-messages">Listar mensagens</button>
           </div>
           <div class="col-12 field">
             <label>Resposta da API</label>
-            <pre class="json" id="packOut"></pre>
+            <pre class="json" id="packOut" data-testid="json-pack-response"></pre>
           </div>
         </div>
       </section>
@@ -139,26 +228,32 @@
         <div class="panel-body grid">
           <div class="col-6 field">
             <label for="send_packId">Pack ID</label>
-            <input id="send_packId" class="input" />
+            <input id="send_packId" class="input" data-testid="input-send-pack-id" />
           </div>
           <div class="col-6 field">
             <label for="to_user_id">ID do Destinatário</label>
-            <input id="to_user_id" class="input" />
+            <input id="to_user_id" class="input" data-testid="input-recipient-id" />
           </div>
           <div class="col-12 field">
             <label for="msg_text">Texto (até 350 caracteres)</label>
-            <textarea id="msg_text" class="input" maxlength="350"></textarea>
+            <textarea id="msg_text" class="input" maxlength="350" data-testid="textarea-message"></textarea>
           </div>
           <div class="col-12 field">
             <label for="attach_ids">IDs dos Anexos (separados por vírgula)</label>
-            <input id="attach_ids" class="input" />
+            <input id="attach_ids" class="input" data-testid="input-attachment-ids" />
           </div>
         </div>
         <div class="panel-footer">
-          <button class="btn primary" id="sendBtn">Enviar Mensagem</button>
+          <button class="btn primary" id="sendBtn" data-testid="button-send-message">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22,2 15,22 11,13 2,9 22,2"></polygon>
+            </svg>
+            Enviar Mensagem
+          </button>
         </div>
         <div class="panel-body no-padding-top">
-          <pre class="json" id="sendOut"></pre>
+          <pre class="json" id="sendOut" data-testid="json-send-response"></pre>
         </div>
       </section>
 
@@ -167,14 +262,21 @@
         <div class="panel-body grid">
           <div class="col-8 field">
             <label for="file">Arquivo (JPG/PNG/PDF/TXT, até 25 MB)</label>
-            <input type="file" id="file" class="input" />
+            <input type="file" id="file" class="input" data-testid="input-file" />
           </div>
           <div class="col-4 field-action">
-            <button class="btn" id="uploadBtn">Fazer Upload</button>
+            <button class="btn" id="uploadBtn" data-testid="button-upload">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7,10 12,15 17,10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Fazer Upload
+            </button>
           </div>
           <div class="col-12 field">
             <label>Resposta do Upload</label>
-            <pre class="json" id="attachOut"></pre>
+            <pre class="json" id="attachOut" data-testid="json-upload-response"></pre>
           </div>
         </div>
       </section>
@@ -182,7 +284,7 @@
     </main>
   </div>
 
-  <div id="toast"></div>
+  <div id="toast" role="alert" aria-live="assertive"></div>
   <script src="/app.js" defer></script>
   <script src="/home.js" defer></script>
 </body>

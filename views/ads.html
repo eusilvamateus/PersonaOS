@@ -2,38 +2,57 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <title>Anúncios</title>
+  <title>Anúncios | Mercado Livre Integração</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Gerencie seus anúncios do Mercado Livre com interface moderna - busque, filtre, edite descrições e sincronize em tempo real" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="/layout.css" rel="stylesheet" />
-  <style>
-    /* empurra ações do topo para a borda direita do header */
-    .topbar .container { display:flex; align-items:center; gap:16px; }
-    .topbar .brand { display:flex; align-items:center; gap:12px; }
-    .topbar .top-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
-    /* garante o botão da direita do card alinhado à borda do card */
-    .panel-header { display:flex; align-items:center; justify-content:space-between; }
-    .panel-header .panel-actions { margin-left:auto; }
-  </style>
 </head>
 <body>
   <header class="topbar">
     <div class="container">
       <div class="brand">
-        <a class="brand-link" href="/" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <a class="brand-link" href="/" data-testid="link-back" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;transition:all .3s ease;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
           Voltar
         </a>
-        <h1 style="margin:0;">Anúncios</h1>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--brand);">
+            <line x1="12" y1="20" x2="12" y2="10"></line>
+            <line x1="18" y1="20" x2="18" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="16"></line>
+          </svg>
+          <h1 style="margin:0;background:var(--brand-gradient);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Anúncios</h1>
+        </div>
       </div>
 
       <div class="top-actions">
         <span id="top-actions-unauthed">
-          <button class="btn primary" id="loginBtn">Entrar</button>
+          <button class="btn primary" id="loginBtn" data-testid="button-login">Entrar</button>
         </span>
         <span id="top-actions-authed" hidden>
-          <button class="btn" id="refreshBtn">Renovar token</button>
+          <button class="btn" id="refreshBtn" data-testid="button-refresh">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23,4 23,10 17,10"></polyline>
+              <polyline points="1,20 1,14 7,14"></polyline>
+              <path d="M20.49 9A9 9 0 0 0 5.64 5.64l1.27 1.27m4.18 4.18L20.49 9z"></path>
+              <path d="M3.51 15a9 9 0 0 0 14.85 3.36l-1.27-1.27m-4.18-4.18L3.51 15z"></path>
+            </svg>
+            Renovar token
+          </button>
           <form method="post" action="/logout" style="display:inline;">
-            <button class="btn" type="submit">Sair</button>
+            <button class="btn" type="submit" data-testid="button-logout">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16,17 21,12 16,7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Sair
+            </button>
           </form>
         </span>
       </div>
@@ -44,80 +63,219 @@
     <aside class="side">
       <h3>Navegação</h3>
       <nav class="nav">
-        <a href="/">🏠 Início</a>
-        <a href="/orders">🧾 Pedidos</a>
-        <a href="/oauth/paste">🧩 OAuth Paste</a>
+        <a href="/" data-testid="link-home">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9,22 9,12 15,12 15,22"></polyline>
+          </svg>
+          Início
+        </a>
+        <a href="/orders" data-testid="link-orders">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14,2 14,8 20,8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          Pedidos
+        </a>
+        <a href="/oauth/paste" data-testid="link-oauth">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+          </svg>
+          OAuth Paste
+        </a>
       </nav>
     </aside>
 
     <section class="content">
       <div class="panel">
         <div class="panel-header">
-          <h2>Busca de Anúncios</h2>
+          <h2>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="M21 21l-4.35-4.35"></path>
+            </svg>
+            Busca de Anúncios
+          </h2>
           <div class="panel-actions">
-            <button id="syncBtn" class="btn">Sincronizar por Stream</button>
-            <button id="cancelBtn" class="btn danger" style="display:none">Cancelar</button>
+            <button id="syncBtn" class="btn primary" data-testid="button-sync">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              Sincronizar por Stream
+            </button>
+            <button id="cancelBtn" class="btn danger" style="display:none" data-testid="button-cancel">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              Cancelar
+            </button>
           </div>
         </div>
 
         <div class="panel-body">
-          <!-- Filtros -->
-          <div class="filters" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-            <input id="adsQ" class="input" placeholder="Buscar por título..." style="min-width:240px" />
-            <input id="adsCategory" class="input" placeholder="Categoria ex.: MLB123" style="width:180px" />
-            <label class="check-label" style="display:flex;align-items:center;gap:6px;">
-              <input id="adsFreeShipping" type="checkbox" />
-              Frete grátis
-            </label>
-            <select id="adsStatus" class="input">
-              <option value="">Status: todos</option>
-              <option value="active">Ativo</option>
-              <option value="paused">Pausado</option>
-              <option value="closed">Fechado</option>
-            </select>
-            <select id="adsSort" class="input">
-              <option value="">Ordenar: padrão</option>
-              <option value="price_asc">Preço crescente</option>
-              <option value="price_desc">Preço decrescente</option>
-              <option value="sold_desc">Mais vendidos</option>
-            </select>
-            <button id="adsSearchBtn" class="btn primary">Buscar</button>
-          </div>
-
-          <!-- Progresso acessível -->
-          <div id="progress" class="progress" hidden role="status" aria-live="polite" aria-atomic="true" aria-label="Progresso de sincronização">
-            <div class="bar-bg">
-              <div id="progressBar" class="bar" style="width:0%"></div>
+          <!-- Enhanced Filters -->
+          <div class="filters" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; align-items:end; margin-bottom:20px; padding:20px; background:var(--surface-glass); border-radius:var(--radius-sm); border:1px solid var(--border);">
+            <div class="field">
+              <label for="adsQ">Buscar por título</label>
+              <input id="adsQ" class="input" placeholder="Digite o nome do produto..." style="min-width:240px" data-testid="input-search" />
             </div>
-            <div id="progressLabel" class="muted">Aguardando…</div>
+            <div class="field">
+              <label for="adsCategory">Categoria</label>
+              <input id="adsCategory" class="input" placeholder="ex.: MLB123" style="width:180px" data-testid="input-category" />
+            </div>
+            <div class="field">
+              <label for="adsStatus">Status</label>
+              <select id="adsStatus" class="input" data-testid="select-status">
+                <option value="">Status: todos</option>
+                <option value="active">Ativo</option>
+                <option value="paused">Pausado</option>
+                <option value="closed">Fechado</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="adsSort">Ordenação</label>
+              <select id="adsSort" class="input" data-testid="select-sort">
+                <option value="">Ordenar: padrão</option>
+                <option value="price_asc">Preço crescente</option>
+                <option value="price_desc">Preço decrescente</option>
+                <option value="sold_desc">Mais vendidos</option>
+              </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; grid-column: 1 / -1; margin-top:8px;">
+              <label class="check-label" style="display:flex;align-items:center;gap:8px;">
+                <input id="adsFreeShipping" type="checkbox" data-testid="checkbox-free-shipping" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 3h15l4 6v8a2 2 0 0 1-2 2h-2a2 2 0 0 1-4 0H6a2 2 0 0 1-4 0H1V3z"></path>
+                  <circle cx="6" cy="16" r="2"></circle>
+                  <circle cx="16" cy="16" r="2"></circle>
+                </svg>
+                Frete grátis
+              </label>
+              <div style="flex:1;"></div>
+              <button id="adsSearchBtn" class="btn primary" data-testid="button-search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+                Buscar
+              </button>
+            </div>
           </div>
 
-          <!-- Tabela -->
+          <!-- Enhanced Progress -->
+          <div id="progress" class="progress-wrap" hidden role="status" aria-live="polite" aria-atomic="true" aria-label="Progresso de sincronização" data-testid="progress-sync">
+            <div class="progress">
+              <div class="bar-bg">
+                <div id="progressBar" class="bar" style="width:0%"></div>
+              </div>
+              <div id="progressLabel" class="muted">Aguardando…</div>
+            </div>
+          </div>
+
+          <!-- Enhanced Table -->
           <div class="table-wrap">
             <table class="table">
               <thead>
                 <tr>
-                  <th>Título</th>
-                  <th>Preço</th>
-                  <th>Vendidos</th>
-                  <th>Status</th>
-                  <th>ID</th>
-                  <th></th>
+                  <th>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
+                      <circle cx="12" cy="13" r="3"></circle>
+                    </svg>
+                    Título
+                  </th>
+                  <th>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="1" x2="12" y2="23"></line>
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                    </svg>
+                    Preço
+                  </th>
+                  <th>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="20" x2="12" y2="10"></line>
+                      <line x1="18" y1="20" x2="18" y2="4"></line>
+                      <line x1="6" y1="20" x2="6" y2="16"></line>
+                    </svg>
+                    Vendidos
+                  </th>
+                  <th>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
+                    </svg>
+                    Status
+                  </th>
+                  <th>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                    ID
+                  </th>
+                  <th style="width:80px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12.5 8.5l1.5-1.5L18 11l-4 4-1.5-1.5L14 12"></path>
+                      <path d="M8 12h.01M12 12h.01M16 12h.01"></path>
+                    </svg>
+                    Ações
+                  </th>
                 </tr>
               </thead>
-              <tbody id="tbody">
-                <tr><td colspan="6" class="muted">Faça uma busca para ver resultados.</td></tr>
+              <tbody id="tbody" data-testid="table-ads-body">
+                <tr>
+                  <td colspan="6" class="muted" style="text-align:center;padding:40px;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px;opacity:0.5;">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <path d="M21 21l-4.35-4.35"></path>
+                    </svg>
+                    <div>Faça uma busca para ver resultados.</div>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
 
-          <!-- Edição de descrição -->
-          <div id="descPanel" class="desc-panel" hidden>
-            <h3>Edição de descrição</h3>
-            <textarea id="descText" class="input" rows="10" placeholder="Descrição em HTML ou Markdown"></textarea>
-            <div style="display:flex; gap:8px; margin-top:8px;">
-              <button id="descSaveBtn" class="btn primary">Salvar descrição</button>
-              <button id="descCloseBtn" class="btn">Fechar</button>
+          <!-- Enhanced Description Panel -->
+          <div id="descPanel" class="panel" style="margin-top:20px;" hidden>
+            <div class="panel-header">
+              <h3 style="margin:0;display:flex;align-items:center;gap:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14,2 14,8 20,8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                Edição de descrição
+              </h3>
+            </div>
+            <div class="panel-body">
+              <div class="field">
+                <label for="descText">Descrição em HTML ou Markdown</label>
+                <textarea id="descText" class="input" rows="12" placeholder="Insira a descrição do produto aqui..." data-testid="textarea-description"></textarea>
+              </div>
+            </div>
+            <div class="panel-footer">
+              <button id="descCloseBtn" class="btn" data-testid="button-close-desc">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                Fechar
+              </button>
+              <button id="descSaveBtn" class="btn primary" data-testid="button-save-desc">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17,21 17,13 7,13 7,21"></polyline>
+                  <polyline points="7,3 7,8 15,8"></polyline>
+                </svg>
+                Salvar descrição
+              </button>
             </div>
           </div>
         </div>

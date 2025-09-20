@@ -2,60 +2,155 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <title>Colar code/state — Mercado Livre</title>
+  <title>Autenticação Manual | Mercado Livre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Cole o código de autorização do Mercado Livre para completar a autenticação OAuth de forma manual e segura" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="/layout.css" rel="stylesheet" />
 </head>
 <body>
-  <!-- Topbar padrão -->
+  <!-- Enhanced Topbar -->
   <header class="topbar">
     <div class="brand">
-      <a href="/" class="brand-link">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <a href="/" class="brand-link" data-testid="link-back" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;transition:all .3s ease;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
         Voltar
       </a>
-      <h1>Autenticação manual</h1>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--brand);">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <circle cx="12" cy="16" r="1"></circle>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <h1 style="margin:0;background:var(--brand-gradient);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Autenticação manual</h1>
+      </div>
     </div>
   </header>
 
-  <!-- Conteúdo centralizado -->
-  <main class="container" style="min-height: calc(100vh - 72px); display: grid; place-items: center;">
-    <section class="panel" style="width: 100%; max-width: 560px;">
+  <!-- Centered content with modern styling -->
+  <main class="container" style="min-height: calc(100vh - 72px); display: grid; place-items: center; padding: 40px 32px;">
+    <section class="panel" style="width: 100%; max-width: 600px; position: relative;">
+      <!-- Decorative element -->
+      <div style="position: absolute; top: -2px; left: 20px; right: 20px; height: 4px; background: var(--brand-gradient); border-radius: 2px; opacity: 0.8;"></div>
+      
       <div class="panel-header">
-        <h2 style="margin:0">Cole o link do callback ou preencha os campos</h2>
-        <p class="muted" style="margin:4px 0 0">Extrairemos <code>code</code> e <code>state</code> para trocar pelos tokens.</p>
+        <div>
+          <h2 style="margin:0;display:flex;align-items:center;gap:10px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            </svg>
+            Cole o link do callback ou preencha os campos
+          </h2>
+          <p class="muted" style="margin:8px 0 0;font-size:14px;line-height:1.5;">
+            Extrairemos <code style="background:var(--surface-glass);padding:2px 6px;border-radius:4px;font-size:13px;">code</code> e 
+            <code style="background:var(--surface-glass);padding:2px 6px;border-radius:4px;font-size:13px;">state</code> automaticamente para trocar pelos tokens de acesso.
+          </p>
+        </div>
       </div>
 
-      <div class="panel-body" style="display: grid; gap: 12px;">
-        <!-- URL completa do callback -->
-        <label class="muted" for="fullUrl">Link completo do callback (opcional)</label>
-        <div style="display:flex; gap: 8px; align-items: center;">
-          <input id="fullUrl" type="url" class="input" placeholder="https://seuapp.com/callback?code=...&state=..." style="flex:1" autocomplete="off" />
-          <button id="pasteBtn" type="button" class="btn">Colar</button>
-          <button id="extractBtn" type="button" class="btn">Extrair</button>
+      <div class="panel-body" style="display: grid; gap: 20px;">
+        <!-- Enhanced URL input section -->
+        <div class="field">
+          <label class="muted" for="fullUrl" style="display:flex;align-items:center;gap:8px;font-weight:600;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            Link completo do callback (opcional)
+          </label>
+          <div style="display:flex; gap: 10px; align-items: center;">
+            <input id="fullUrl" type="url" class="input" 
+                   placeholder="https://seuapp.com/callback?code=...&state=..." 
+                   style="flex:1" autocomplete="off" data-testid="input-callback-url" />
+            <button id="pasteBtn" type="button" class="btn" data-testid="button-paste">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+              </svg>
+              Colar
+            </button>
+            <button id="extractBtn" type="button" class="btn primary" data-testid="button-extract">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17,10 12,15 7,10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Extrair
+            </button>
+          </div>
+          <small id="hint" class="muted" data-testid="text-hint"></small>
         </div>
-        <small id="hint" class="muted"></small>
 
-        <!-- Form principal -->
-        <form id="pasteForm" method="post" action="/oauth/paste" style="display: grid; gap: 12px;">
-          <div>
-            <label class="muted" for="code">code</label>
-            <input id="code" name="code" class="input" placeholder="ex.: TG-123abc..." required autocomplete="off" />
+        <!-- Enhanced form -->
+        <form id="pasteForm" method="post" action="/oauth/paste" style="display: grid; gap: 20px;">
+          <div class="field">
+            <label class="muted" for="code" style="display:flex;align-items:center;gap:8px;font-weight:600;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16,18 22,12 16,6"></polyline>
+                <polyline points="8,6 2,12 8,18"></polyline>
+              </svg>
+              Código de Autorização
+            </label>
+            <input id="code" name="code" class="input" 
+                   placeholder="ex.: TG-123abc..." required autocomplete="off" 
+                   data-testid="input-auth-code" />
           </div>
-          <div>
-            <label class="muted" for="state">state</label>
-            <input id="state" name="state" class="input" placeholder="gerado pelo /login" required autocomplete="off" />
+          
+          <div class="field">
+            <label class="muted" for="state" style="display:flex;align-items:center;gap:8px;font-weight:600;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <circle cx="12" cy="16" r="1"></circle>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              State de Segurança
+            </label>
+            <input id="state" name="state" class="input" 
+                   placeholder="gerado pelo /login" required autocomplete="off" 
+                   data-testid="input-state" />
           </div>
 
-          <div class="panel-footer" style="display:flex; gap:8px; justify-content: flex-end;">
-            <a href="/login" class="btn">Gerar novo state</a>
-            <button type="submit" class="btn primary">Trocar por tokens</button>
+          <div class="panel-footer" style="display:flex; gap:12px; justify-content: flex-end; margin-top:8px;">
+            <a href="/login" class="btn" data-testid="button-generate-state">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              Gerar novo state
+            </a>
+            <button type="submit" class="btn primary" data-testid="button-exchange-tokens">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M7 17l9.2-9.2M17 8v9H8"></path>
+                <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"></path>
+                <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"></path>
+              </svg>
+              Trocar por tokens
+            </button>
           </div>
         </form>
 
-        <p class="muted" style="margin:4px 0 0">
-          Dica: se você copiou o link inteiro do navegador após o login, clique em <strong>Colar</strong> e depois em <strong>Extrair</strong>.
-        </p>
+        <!-- Enhanced tip section -->
+        <div style="padding:16px;background:var(--surface-glass);border-radius:var(--radius-sm);border:1px solid var(--border);">
+          <div style="display:flex;align-items:flex-start;gap:12px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent);margin-top:2px;flex-shrink:0;">
+              <path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"></path>
+              <polyline points="9,11 12,14 15,11"></polyline>
+              <line x1="12" y1="14" x2="12" y2="1"></line>
+            </svg>
+            <div>
+              <div style="font-weight:600;margin-bottom:4px;color:var(--text);">💡 Dica rápida</div>
+              <p class="muted" style="margin:0;font-size:14px;line-height:1.5;">
+                Se você copiou o link inteiro do navegador após o login, clique em <strong>Colar</strong> 
+                e depois em <strong>Extrair</strong> para preencher automaticamente os campos abaixo.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>

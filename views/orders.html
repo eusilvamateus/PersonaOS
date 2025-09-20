@@ -2,28 +2,58 @@
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <title>Pedidos | Mercado Livre</title>
+  <title>Pedidos | Mercado Livre Integração</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Gerencie todos os seus pedidos do Mercado Livre de forma moderna e eficiente - visualize, filtre e sincronize em tempo real" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="/layout.css" rel="stylesheet" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <a href="/" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <a href="/" data-testid="link-back" style="display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;transition:all .3s ease;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
         Voltar
       </a>
-      <h1 style="margin:0;">Pedidos</h1>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--brand);">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14,2 14,8 20,8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10,9 9,9 8,9"></polyline>
+        </svg>
+        <h1 style="margin:0;background:var(--brand-gradient);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Pedidos</h1>
+      </div>
     </div>
 
     <div class="top-actions">
       <span id="top-actions-unauthed">
-        <button class="btn primary" id="loginBtn">Entrar</button>
+        <button class="btn primary" id="loginBtn" data-testid="button-login">Entrar</button>
       </span>
       <span id="top-actions-authed" hidden>
-        <button class="btn" id="refreshBtn">Renovar token</button>
+        <button class="btn" id="refreshBtn" data-testid="button-refresh">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23,4 23,10 17,10"></polyline>
+            <polyline points="1,20 1,14 7,14"></polyline>
+            <path d="M20.49 9A9 9 0 0 0 5.64 5.64l1.27 1.27m4.18 4.18L20.49 9z"></path>
+            <path d="M3.51 15a9 9 0 0 0 14.85 3.36l-1.27-1.27m-4.18-4.18L3.51 15z"></path>
+          </svg>
+          Renovar token
+        </button>
         <form method="post" action="/logout" style="display:inline;">
-          <button class="btn" type="submit">Sair</button>
+          <button class="btn" type="submit" data-testid="button-logout">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16,17 21,12 16,7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            Sair
+          </button>
         </form>
       </span>
     </div>
@@ -32,17 +62,57 @@
   <main class="container">
     <section class="panel">
       <div class="panel-header">
-        <div id="chips" style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button data-group="all" class="chip active">Todos <span id="count-all" class="badge">0</span></button>
-          <button data-group="delivered" class="chip">Entregues <span id="count-delivered" class="badge">0</span></button>
-          <button data-group="in_transit" class="chip">A caminho <span id="count-in_transit" class="badge">0</span></button>
-          <button data-group="ready_to_ship" class="chip">Pronto para enviar <span id="count-ready_to_ship" class="badge">0</span></button>
-          <button data-group="other" class="chip">Outros <span id="count-other" class="badge">0</span></button>
+        <div id="chips" style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button data-group="all" class="chip active" data-testid="chip-all">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3h18v18H3zM9 9h6v6H9z"/>
+            </svg>
+            Todos 
+            <span id="count-all" class="badge" data-testid="badge-all">0</span>
+          </button>
+          <button data-group="delivered" class="chip" data-testid="chip-delivered">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3 8-8"></path>
+              <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.77 0 3.4.51 4.78 1.39"></path>
+            </svg>
+            Entregues 
+            <span id="count-delivered" class="badge" data-testid="badge-delivered">0</span>
+          </button>
+          <button data-group="in_transit" class="chip" data-testid="chip-in-transit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 3h15l4 6v8a2 2 0 0 1-2 2h-2a2 2 0 0 1-4 0H6a2 2 0 0 1-4 0H1V3z"></path>
+              <circle cx="6" cy="16" r="2"></circle>
+              <circle cx="16" cy="16" r="2"></circle>
+            </svg>
+            A caminho 
+            <span id="count-in_transit" class="badge" data-testid="badge-in-transit">0</span>
+          </button>
+          <button data-group="ready_to_ship" class="chip" data-testid="chip-ready-to-ship">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="7.5,4.21 12,6.81 16.5,4.21"></polyline>
+              <polyline points="7.5,19.79 7.5,14.6 3,12"></polyline>
+              <polyline points="21,12 16.5,14.6 16.5,19.79"></polyline>
+              <polyline points="3.27,6.96 12,12.01 20.73,6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            Pronto para enviar 
+            <span id="count-ready_to_ship" class="badge" data-testid="badge-ready-to-ship">0</span>
+          </button>
+          <button data-group="other" class="chip" data-testid="chip-other">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"></circle>
+              <circle cx="12" cy="5" r="1"></circle>
+              <circle cx="12" cy="19" r="1"></circle>
+            </svg>
+            Outros 
+            <span id="count-other" class="badge" data-testid="badge-other">0</span>
+          </button>
         </div>
 
-        <div class="tools" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <label class="muted" for="periodSelect">Período:</label>
-          <select id="periodSelect" class="input" style="width:auto;">
+        <div class="tools" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px;">
+          <label class="muted" for="periodSelect" style="font-weight:600;">Período:</label>
+          <select id="periodSelect" class="input" style="width:auto;min-width:160px;" data-testid="select-period">
             <option value="24h">Últimas 24 horas</option>
             <option value="7d" selected>Últimos 7 dias</option>
             <option value="1m">Último mês</option>
@@ -50,24 +120,47 @@
             <option value="custom">Data personalizada…</option>
           </select>
 
-          <input id="fromDate" class="input" type="date" style="display:none" aria-label="Data inicial" />
-          <span class="muted">até</span>
-          <input id="toDate" class="input" type="date" style="display:none" aria-label="Data final" />
+          <input id="fromDate" class="input" type="date" style="display:none" aria-label="Data inicial" data-testid="input-from-date" />
+          <span class="muted" style="display:none;">até</span>
+          <input id="toDate" class="input" type="date" style="display:none" aria-label="Data final" data-testid="input-to-date" />
 
-          <button id="syncBtn" class="btn">Sincronizar por Stream</button>
-          <button id="cancelBtn" class="btn danger" style="display:none">Cancelar</button>
+          <button id="syncBtn" class="btn primary" data-testid="button-sync">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"></path>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            Sincronizar por Stream
+          </button>
+          <button id="cancelBtn" class="btn danger" style="display:none" data-testid="button-cancel">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+            Cancelar
+          </button>
 
           <div style="flex:1;"></div>
 
-          <button id="prevBtn" class="btn" aria-label="Página anterior">◀</button>
-          <span id="pageLabel" class="muted">Página 1</span>
-          <button id="nextBtn" class="btn" aria-label="Próxima página">▶</button>
+          <button id="prevBtn" class="btn" aria-label="Página anterior" data-testid="button-prev">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15,18 9,12 15,6"></polyline>
+            </svg>
+          </button>
+          <span id="pageLabel" class="muted" style="font-weight:600;padding:0 12px;" data-testid="text-page-info">Página 1</span>
+          <button id="nextBtn" class="btn" aria-label="Próxima página" data-testid="button-next">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9,18 15,12 9,6"></polyline>
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div id="progress" class="progress-wrap" hidden role="status" aria-live="polite" aria-atomic="true" aria-label="Progresso de sincronização de pedidos">
+      <div id="progress" class="progress-wrap" hidden role="status" aria-live="polite" aria-atomic="true" aria-label="Progresso de sincronização de pedidos" data-testid="progress-sync">
         <div class="progress">
-          <div class="bar-bg"><div id="progressBar" class="bar" style="width:0%"></div></div>
+          <div class="bar-bg">
+            <div id="progressBar" class="bar" style="width:0%"></div>
+          </div>
           <span id="progressLabel">Sincronizando pedidos…</span>
         </div>
       </div>
@@ -77,19 +170,86 @@
           <table class="table">
             <thead>
               <tr>
-                <th>Data</th>
-                <th>Pedido</th>
-                <th>Comprador</th>
-                <th>Itens</th>
-                <th>Total</th>
-                <th>Pagamento</th>
-                <th>Status</th>
-                <th>Envio</th>
-                <th>Pack</th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  Data
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14,2 14,8 20,8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                  </svg>
+                  Pedido
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  Comprador
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <path d="M16 10a4 4 0 0 1-8 0"></path>
+                  </svg>
+                  Itens
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  </svg>
+                  Total
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="1" y="3" width="15" height="13"></rect>
+                    <path d="M16 8l4-4V21l-4-4H16a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"></path>
+                  </svg>
+                  Pagamento
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
+                  </svg>
+                  Status
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 3h15l4 6v8a2 2 0 0 1-2 2h-2a2 2 0 0 1-4 0H6a2 2 0 0 1-4 0H1V3z"></path>
+                    <circle cx="6" cy="16" r="2"></circle>
+                    <circle cx="16" cy="16" r="2"></circle>
+                  </svg>
+                  Envio
+                </th>
+                <th>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    <path d="M8 10h.01M12 10h.01M16 10h.01"></path>
+                  </svg>
+                  Pack
+                </th>
               </tr>
             </thead>
-            <tbody id="tbody">
-              <tr><td colspan="9" class="muted">Carregando…</td></tr>
+            <tbody id="tbody" data-testid="table-orders-body">
+              <tr>
+                <td colspan="9" class="muted" style="text-align:center;padding:40px;">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px;opacity:0.5;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 6v6l4 2"></path>
+                  </svg>
+                  <div>Carregando pedidos...</div>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
